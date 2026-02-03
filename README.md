@@ -1,16 +1,15 @@
-# heal_mate_ui
+# HealMate UI
 
-A new Flutter project.
+A Flutter mobile application UI designed to control and interact with a healthcare robot.
 
-## Getting Started
+## ✨ Features
+- Robot control interface
+- Health monitoring UI
+- Clean and modern Flutter UI
 
-This project is a starting point for a Flutter application.
+## 🛠️ Built With
+- Flutter
+- Dart
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 📌 Status
+UI completed. Robot integration in progress.
