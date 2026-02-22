@@ -1,20 +1,40 @@
-# HealMate UI
+# 🩺 HealMate - Smart Medical Assistant App
 
-A Flutter mobile application UI designed to control and interact with a healthcare robot.
+## 📱 About The Project
+HealMate is a smart healthcare mobile application designed to assist users with medical information, health tracking, and AI-powered support features.
 
-## ✨ Features
-- Robot control interface
-- Health monitoring UI
-- Clean and modern Flutter UI
+The app focuses on providing an intuitive user experience while integrating modern Flutter development practices.
 
-## 🛠️ Built With
+---
+
+## ✨ Main Features
+- 🔐 User Authentication
+- 🩺 Medical Dashboard
+- 🤖 AI-based Assistance
+- 📅 Smart Scheduler
+- 📊 Health Data Visualization
+- 📱 Clean & Responsive UI
+- 🔔 Notifications & Reminders
+
+---
+
+## 🛠️ Tech Stack
 - Flutter
 - Dart
+- Firebase
+- REST APIs
+- State Management (Provider / Bloc)
+- Local Storage
 
-## 📌 Status
-UI completed. Robot integration in progress.
+---
+
+## 🧠 Architecture
+The project follows a scalable structure to support future feature expansion and backend integrations.
+
+---
 
 ## 📸 Screenshots
+
 1. Home  
 ![Home](screenshots/home.png)
 3. Robot Control  
@@ -22,3 +42,21 @@ UI completed. Robot integration in progress.
 ![Robot Control](screenshots/robot_control2.png)
 4. Patient Profile  
 ![Patient Profile](screenshots/patient_profile.png)
+
+---
+
+## 🚀 Getting Started
+
+### Clone repository
+
+
+### Install dependencies
+flutter pub get 
+
+### Run the app
+flutter run
+
+---
+
+## 👩‍💻 Developer
+Built using Flutter as a smart healthcare assistant application.
