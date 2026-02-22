@@ -48,7 +48,7 @@ The project follows a scalable structure to support future feature expansion and
 ## 🚀 Getting Started
 
 ### Clone repository
-
+https://github.com/Faridamahmouudd/heal_mate_ui.git
 
 ### Install dependencies
 flutter pub get 
