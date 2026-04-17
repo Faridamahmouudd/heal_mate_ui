@@ -1,24 +1,26 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-
-// ✅ بدل file_picker (عشان مشكلة TLS)
 import 'package:file_selector/file_selector.dart';
-
-// ✅ لفتح الملفات فعليًا (مش UI بس)
 import 'package:open_filex/open_filex.dart';
 
 import '../constants/colors.dart';
+import '../models/chat_message_model.dart';
+import '../core/storage/secure_storage_service.dart';
+import '../services/api/chat_api_service.dart';
 
 class ChatScreen extends StatefulWidget {
-  // ✅ بقوا اختياريين عشان ChatScreen() يشتغل في كل مكان بدون Errors
-  final String chatId; // الأفضل (ID ثابت)
+  final String chatId;
   final String chatName;
   final String avatarPath;
   final String subtitle;
+
+  /// مهم جدًا للربط الحقيقي
+  final int otherUserId;
 
   const ChatScreen({
     super.key,
@@ -26,6 +28,7 @@ class ChatScreen extends StatefulWidget {
     this.chatName = "Messages",
     this.avatarPath = "assets/images/patient_avatar.jpeg",
     this.subtitle = "Online",
+    this.otherUserId = 0,
   });
 
   @override
@@ -36,58 +39,113 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
 
+  final ChatApiService _chatApiService = ChatApiService();
+
   late Box _box;
   late String _chatKey;
 
   List<HealChatMessage> _messages = [];
   bool _ready = false;
+  bool _isSending = false;
+  bool _isLoadingRemote = true;
+  int _myUserId = 0;
 
   @override
   void initState() {
     super.initState();
     _chatKey = "chat_${widget.chatId}".replaceAll(" ", "_").toLowerCase();
-    _initHive();
+    _initChat();
+  }
+
+  Future<void> _initChat() async {
+    await _initHive();
+    await _loadCurrentUserId();
+    await _loadMessages();
   }
 
   Future<void> _initHive() async {
-    // ✅ مهم: Hive.initFlutter يفضل مرة واحدة في main()
-    // بس هنا هنحميه عشان ما يكررش مشاكل
     if (!Hive.isBoxOpen("chats_box")) {
       await Hive.initFlutter();
       _box = await Hive.openBox("chats_box");
     } else {
       _box = Hive.box("chats_box");
     }
+  }
 
-    final raw = (_box.get(_chatKey, defaultValue: []) as List);
-    _messages = raw.map((e) => HealChatMessage.fromAny(e)).toList();
+  Future<void> _loadCurrentUserId() async {
+    final saved = await SecureStorageService.getUserId();
+    _myUserId = int.tryParse(saved ?? '') ?? 0;
+  }
 
-    if (_messages.isEmpty) {
-      final now = DateTime.now();
-      _messages = [
-        HealChatMessage(
-          text: "Hello doctor, I feel a bit dizzy today.",
-          isMe: false,
-          createdAt: now.subtract(const Duration(minutes: 18)),
-        ),
-        HealChatMessage(
-          text: "Did the robot check your blood pressure?",
-          isMe: true,
-          createdAt: now.subtract(const Duration(minutes: 16)),
-          seen: true,
-        ),
-        HealChatMessage(
-          text: "Yes, it was slightly low.",
-          isMe: false,
-          createdAt: now.subtract(const Duration(minutes: 13)),
-        ),
-      ];
-      await _save();
+  Future<void> _loadMessages() async {
+    try {
+      if (mounted) {
+        setState(() {
+          _isLoadingRemote = true;
+          _ready = false;
+        });
+      }
+
+      if (_myUserId > 0 && widget.otherUserId > 0) {
+        final result = await _chatApiService.getHistory(_myUserId, widget.otherUserId);
+
+        _messages = result.map((m) {
+          return HealChatMessage(
+            id: m.messageId,
+            text: m.contentPath,
+            isMe: m.senderId == _myUserId,
+            createdAt: m.sentAt,
+            seen: m.isRead || m.senderId == _myUserId,
+          );
+        }).toList();
+
+        await _save();
+
+        final unreadIds = result
+            .where((m) => m.receiverId == _myUserId && !m.isRead)
+            .map((m) => m.messageId)
+            .toList();
+
+        if (unreadIds.isNotEmpty) {
+          await _chatApiService.markAsRead(unreadIds);
+        }
+      } else {
+        final raw = (_box.get(_chatKey, defaultValue: []) as List);
+        _messages = raw.map((e) => HealChatMessage.fromAny(e)).toList();
+
+        if (_messages.isEmpty) {
+          final now = DateTime.now();
+          _messages = [
+            HealChatMessage(
+              text: "Hello doctor, I feel a bit dizzy today.",
+              isMe: false,
+              createdAt: now.subtract(const Duration(minutes: 18)),
+            ),
+            HealChatMessage(
+              text: "Did the robot check your blood pressure?",
+              isMe: true,
+              createdAt: now.subtract(const Duration(minutes: 16)),
+              seen: true,
+            ),
+            HealChatMessage(
+              text: "Yes, it was slightly low.",
+              isMe: false,
+              createdAt: now.subtract(const Duration(minutes: 13)),
+            ),
+          ];
+          await _save();
+        }
+      }
+    } catch (_) {
+      final raw = (_box.get(_chatKey, defaultValue: []) as List);
+      _messages = raw.map((e) => HealChatMessage.fromAny(e)).toList();
     }
 
     _ready = true;
+    _isLoadingRemote = false;
+
     if (mounted) setState(() {});
-    _scrollToBottom(delayMs: 60);
+    _scrollToBottom(delayMs: 80);
   }
 
   Future<void> _save() async {
@@ -126,29 +184,54 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendText() async {
     final txt = _controller.text.trim();
-    if (txt.isEmpty) return;
+    if (txt.isEmpty || _isSending) return;
+
+    final tempMessage = HealChatMessage(
+      text: txt,
+      isMe: true,
+      createdAt: DateTime.now(),
+      seen: false,
+    );
 
     setState(() {
-      _messages.add(
-        HealChatMessage(
-          text: txt,
-          isMe: true,
-          createdAt: DateTime.now(),
-          seen: false,
-        ),
-      );
+      _isSending = true;
+      _messages.add(tempMessage);
       _controller.clear();
     });
 
-    await _save();
     _scrollToBottom(delayMs: 50);
 
-    // simulate delivered/seen
-    Future.delayed(const Duration(milliseconds: 500), () async {
-      if (!mounted) return;
-      setState(() => _messages.last.seen = true);
+    try {
+      if (_myUserId > 0 && widget.otherUserId > 0) {
+        final sent = await _chatApiService.sendMessage(
+          senderId: _myUserId,
+          receiverId: widget.otherUserId,
+          message: txt,
+        );
+
+        final index = _messages.indexOf(tempMessage);
+        if (index != -1) {
+          _messages[index] = HealChatMessage(
+            id: sent.messageId,
+            text: sent.contentPath,
+            isMe: true,
+            createdAt: sent.sentAt,
+            seen: true,
+          );
+        }
+      }
+
       await _save();
-    });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to send message: $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
   }
 
   Future<File> _copyToAppDir(File f, String name) async {
@@ -186,19 +269,38 @@ class _ChatScreenState extends State<ChatScreen> {
           createdAt: DateTime.now(),
           attachmentPath: copied.path,
           attachmentType: "image",
+          seen: false,
         ),
       );
     });
 
     await _save();
     _scrollToBottom(delayMs: 60);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Image attached locally only. Backend upload API is still missing."),
+      ),
+    );
   }
 
-  // ✅ File selector بدل file_picker
   Future<void> _attachFile() async {
     const XTypeGroup typeGroup = XTypeGroup(
       label: 'documents',
-      extensions: <String>['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'png', 'jpg', 'jpeg'],
+      extensions: <String>[
+        'pdf',
+        'doc',
+        'docx',
+        'ppt',
+        'pptx',
+        'xls',
+        'xlsx',
+        'txt',
+        'png',
+        'jpg',
+        'jpeg'
+      ],
     );
 
     final XFile? file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
@@ -220,12 +322,20 @@ class _ChatScreenState extends State<ChatScreen> {
           createdAt: DateTime.now(),
           attachmentPath: copied.path,
           attachmentType: "file",
+          seen: false,
         ),
       );
     });
 
     await _save();
     _scrollToBottom(delayMs: 60);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("File attached locally only. Backend upload API is still missing."),
+      ),
+    );
   }
 
   void _openAttachSheet() {
@@ -368,7 +478,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        // ✅ Background gradient خفيف
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -395,7 +504,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 onMore: _openMoreMenu,
               ),
               Expanded(
-                child: !_ready
+                child: !_ready || _isLoadingRemote
                     ? const Center(child: CircularProgressIndicator())
                     : ListView.builder(
                   controller: _scroll,
@@ -409,7 +518,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
                     return Column(
                       children: [
-                        if (showDaySeparator) _DaySeparator(text: _dayLabel(m.createdAt)),
+                        if (showDaySeparator)
+                          _DaySeparator(text: _dayLabel(m.createdAt)),
                         _TextMessageRow(
                           isMe: m.isMe,
                           time: _time(m.createdAt),
@@ -426,6 +536,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 controller: _controller,
                 onAttach: _openAttachSheet,
                 onSend: _sendText,
+                isSending: _isSending,
               ),
             ],
           ),
@@ -435,7 +546,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// ===== Header =====
 class _Header extends StatelessWidget {
   final String name;
   final String subtitle;
@@ -503,6 +613,7 @@ class _Header extends StatelessWidget {
 class _HeaderIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+
   const _HeaderIcon({required this.icon, required this.onTap});
 
   @override
@@ -523,9 +634,9 @@ class _HeaderIcon extends StatelessWidget {
   }
 }
 
-/// ✅ Day separator
 class _DaySeparator extends StatelessWidget {
   final String text;
+
   const _DaySeparator({required this.text});
 
   @override
@@ -552,7 +663,6 @@ class _DaySeparator extends StatelessWidget {
   }
 }
 
-/// ===== Message Row =====
 class _TextMessageRow extends StatelessWidget {
   final bool isMe;
   final String time;
@@ -572,7 +682,6 @@ class _TextMessageRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final align = isMe ? Alignment.centerRight : Alignment.centerLeft;
     final cross = isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-
     final bubbleColor = isMe ? Colors.white : AppColors.inputBackground;
 
     return Align(
@@ -670,16 +779,17 @@ class _TextMessageRow extends StatelessWidget {
   }
 }
 
-/// ===== Input =====
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onAttach;
   final VoidCallback onSend;
+  final bool isSending;
 
   const _InputBar({
     required this.controller,
     required this.onAttach,
     required this.onSend,
+    required this.isSending,
   });
 
   @override
@@ -725,15 +835,23 @@ class _InputBar extends StatelessWidget {
           const SizedBox(width: 10),
           InkWell(
             borderRadius: BorderRadius.circular(22),
-            onTap: onSend,
+            onTap: isSending ? null : onSend,
             child: Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: isSending ? Colors.grey : AppColors.primary,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.send, color: Colors.white, size: 18),
+              child: isSending
+                  ? const Padding(
+                padding: EdgeInsets.all(10),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+                  : const Icon(Icons.send, color: Colors.white, size: 18),
             ),
           ),
         ],
@@ -803,22 +921,25 @@ class _MenuItem extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       leading: Icon(icon, color: c),
-      title: Text(title, style: TextStyle(color: c, fontWeight: FontWeight.w900)),
+      title: Text(
+        title,
+        style: TextStyle(color: c, fontWeight: FontWeight.w900),
+      ),
     );
   }
 }
 
-/// ===== Model =====
 class HealChatMessage {
+  final int? id;
   final String text;
   final bool isMe;
   final DateTime createdAt;
   bool seen;
-
   String? attachmentPath;
   String? attachmentType;
 
   HealChatMessage({
+    this.id,
     required this.text,
     required this.isMe,
     required this.createdAt,
@@ -828,6 +949,7 @@ class HealChatMessage {
   });
 
   Map<String, dynamic> toMap() => {
+    "id": id,
     "text": text,
     "isMe": isMe,
     "createdAt": createdAt.toIso8601String(),
@@ -837,6 +959,7 @@ class HealChatMessage {
   };
 
   factory HealChatMessage.fromMap(Map<String, dynamic> m) => HealChatMessage(
+    id: m["id"],
     text: (m["text"] ?? "").toString(),
     isMe: (m["isMe"] ?? false) as bool,
     createdAt: DateTime.tryParse((m["createdAt"] ?? "").toString()) ?? DateTime.now(),

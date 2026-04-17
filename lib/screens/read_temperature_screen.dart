@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../core/storage/secure_storage_service.dart';
+import '../services/api/robot_api_service.dart';
 
 class ReadTemperatureScreen extends StatefulWidget {
   const ReadTemperatureScreen({super.key});
@@ -9,26 +11,77 @@ class ReadTemperatureScreen extends StatefulWidget {
 }
 
 class _ReadTemperatureScreenState extends State<ReadTemperatureScreen> {
+  final RobotApiService _robotApiService = RobotApiService();
+
   bool _loading = false;
   double? _temp;
+  int _doctorId = 0;
+  int? _patientId = 2;
+  String? _lastUpdated;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorId();
+  }
+
+  Future<void> _loadDoctorId() async {
+    final saved = await SecureStorageService.getUserId();
+    setState(() {
+      _doctorId = int.tryParse(saved ?? '') ?? 0;
+    });
+  }
 
   Future<void> _readTemp() async {
+    if (_doctorId == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Doctor ID not found. Please login first.")),
+      );
+      return;
+    }
+
     setState(() {
       _loading = true;
       _temp = null;
     });
 
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      await _robotApiService.sendCommand(
+        doctorId: _doctorId,
+        patientId: _patientId,
+        command: "READ_TEMPERATURE",
+      );
 
-    // Demo temperature
-    setState(() {
-      _loading = false;
-      _temp = 38.2;
-    });
+      await Future.delayed(const Duration(seconds: 1));
+
+      final now = TimeOfDay.now();
+      setState(() {
+        _loading = false;
+        _temp = 38.2;
+        _lastUpdated =
+        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Temperature read completed")),
+      );
+    } catch (e) {
+      setState(() {
+        _loading = false;
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to read temperature: $e")),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isFever = (_temp ?? 0) >= 38.0;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -74,7 +127,10 @@ class _ReadTemperatureScreenState extends State<ReadTemperatureScreen> {
                       color: AppColors.inputBackground,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.thermostat_rounded, color: AppColors.primary),
+                    child: const Icon(
+                      Icons.thermostat_rounded,
+                      color: AppColors.primary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -98,6 +154,17 @@ class _ReadTemperatureScreenState extends State<ReadTemperatureScreen> {
                             color: AppColors.textDark,
                           ),
                         ),
+                        if (_lastUpdated != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            "Last updated: $_lastUpdated",
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textLight,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -110,6 +177,35 @@ class _ReadTemperatureScreenState extends State<ReadTemperatureScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+            if (_temp != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isFever ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                      color: isFever ? Colors.redAccent : Colors.green,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isFever ? "Patient has fever" : "Temperature is within normal range",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: isFever ? Colors.redAccent : Colors.green,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,

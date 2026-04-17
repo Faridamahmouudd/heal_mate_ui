@@ -2,16 +2,14 @@ import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../widgets/gradient_button.dart';
 import '../models/user_role.dart';
-
-// biometric service
 import '../services/biometric_service.dart';
+import '../services/api/auth_api_service.dart';
+import '../core/storage/secure_storage_service.dart';
 
 // screens
 import 'forgotten_password_screen.dart';
 import 'create_account_screen.dart';
 import 'doctor_home_screen.dart';
-
-// Nurse + Patient homes
 import '../Nurse/nurse_home_screen.dart';
 import '../Patient/patient_home_screen.dart';
 
@@ -26,21 +24,41 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _rememberMe = false;
+  bool _isLoading = false;
+  bool _obscurePassword = true;
 
   final TextEditingController _emailController = TextEditingController(text: "");
   final TextEditingController _passwordController = TextEditingController(text: "");
 
-  // ====== helper: go to home by role ======
-  void _goHomeByRole() {
-    final role = widget.role;
+  final AuthApiService _authApiService = AuthApiService();
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  UserRole _mapRoleFromString(String role) {
+    switch (role.toLowerCase()) {
+      case 'nurse':
+        return UserRole.nurse;
+      case 'patient':
+        return UserRole.patient;
+      case 'doctor':
+      default:
+        return UserRole.doctor;
+    }
+  }
+
+  void _goHomeByRole(UserRole role) {
     Widget target;
+
     if (role == UserRole.nurse) {
       target = const NurseHomeScreen();
     } else if (role == UserRole.patient) {
       target = const PatientHomeScreen();
     } else {
-      // default doctor
       target = const DoctorHomeScreen();
     }
 
@@ -50,26 +68,70 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ------- Login عادي -------
-  void _onLoginPressed() {
-    _goHomeByRole();
+  Future<void> _onLoginPressed() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      _showSnackBar("Please enter your email");
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showSnackBar("Please enter your password");
+      return;
+    }
+
+    try {
+      setState(() => _isLoading = true);
+
+      final result = await _authApiService.login(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      final userRole = _mapRoleFromString(result.role);
+
+      _goHomeByRole(userRole);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar("Login failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  // ------- Login بالبصمة -------
   Future<void> _loginWithBiometrics() async {
     final success = await BiometricService.authenticate();
 
     if (!mounted) return;
 
-    if (success) {
-      _goHomeByRole();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Biometric authentication failed"),
-        ),
-      );
+    if (!success) {
+      _showSnackBar("Biometric authentication failed");
+      return;
     }
+
+    final savedRole = await SecureStorageService.getRole();
+
+    if (!mounted) return;
+
+    if (savedRole == null || savedRole.isEmpty) {
+      _showSnackBar("No saved session found. Please login first.");
+      return;
+    }
+
+    final userRole = _mapRoleFromString(savedRole);
+    _goHomeByRole(userRole);
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -82,7 +144,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== Top bar =====
               Row(
                 children: [
                   IconButton(
@@ -115,10 +176,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 24),
 
-              // ===== Card with fields =====
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
@@ -130,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.black.withOpacity(0.04),
                       blurRadius: 14,
                       offset: const Offset(0, 6),
-                    )
+                    ),
                   ],
                 ),
                 child: Column(
@@ -229,20 +288,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 22),
 
-              // ===== Login button =====
-              GradientButton(
+              _isLoading
+                  ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+                  : GradientButton(
                 text: "Login",
                 onTap: _onLoginPressed,
               ),
 
               const SizedBox(height: 12),
 
-              // ===== Fingerprint login button =====
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: _loginWithBiometrics,
+                  onPressed: _isLoading ? null : _loginWithBiometrics,
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                       color: AppColors.primary.withOpacity(0.9),
@@ -269,7 +333,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 24),
 
-              // ===== divider "or sign up with" =====
               Row(
                 children: [
                   Expanded(
@@ -298,7 +361,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 18),
 
-              // ===== Social buttons =====
               _socialButton("assets/images/google.png", "Continue With Google"),
               const SizedBox(height: 12),
               _socialButton("assets/images/apple.png", "Continue With Apple"),
@@ -307,7 +369,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 24),
 
-              // ===== Sign up link =====
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -335,7 +396,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontSize: 13,
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
 
@@ -359,8 +420,11 @@ class _LoginScreenState extends State<LoginScreen> {
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
-        obscureText: isPass,
-        style: const TextStyle(color: AppColors.textDark, fontSize: 14),
+        obscureText: isPass ? _obscurePassword : false,
+        style: const TextStyle(
+          color: AppColors.textDark,
+          fontSize: 14,
+        ),
         decoration: InputDecoration(
           prefixIcon: prefixIcon == null
               ? null
@@ -369,6 +433,22 @@ class _LoginScreenState extends State<LoginScreen> {
             color: AppColors.textLight,
             size: 20,
           ),
+          suffixIcon: isPass
+              ? IconButton(
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: AppColors.textLight,
+              size: 20,
+            ),
+          )
+              : null,
           filled: true,
           fillColor: AppColors.inputBackground,
           hintText: hint,
@@ -376,7 +456,10 @@ class _LoginScreenState extends State<LoginScreen> {
             color: AppColors.textLight.withOpacity(0.7),
             fontSize: 14,
           ),
-          contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: 18,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
@@ -401,7 +484,7 @@ class _LoginScreenState extends State<LoginScreen> {
             color: Colors.black.withOpacity(0.03),
             blurRadius: 6,
             offset: const Offset(0, 3),
-          )
+          ),
         ],
       ),
       child: Row(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import '../models/patient_model.dart';
+import '../services/api/doctor_api_service.dart';
 import 'chat_hub_screen.dart';
 
 // الشاشات التانية
@@ -53,201 +55,287 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   }
 }
 
-class _HomeTab extends StatelessWidget {
+class _HomeTab extends StatefulWidget {
   const _HomeTab();
 
   @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+  final DoctorApiService _doctorApiService = DoctorApiService();
+
+  bool _isLoading = true;
+  String? _error;
+  List<PatientModel> _patients = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPatients();
+  }
+
+  Future<void> _loadPatients() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final result = await _doctorApiService.getMyPatients();
+
+      if (!mounted) return;
+
+      setState(() {
+        _patients = result;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _patientSubtitle(PatientModel patient) {
+    final history = (patient.medicalHistory ?? '').trim();
+    if (history.isNotEmpty) return history;
+
+    final gender = (patient.gender ?? '').trim();
+    final age = patient.age;
+
+    if (gender.isNotEmpty && age != null) {
+      return "$gender, $age years";
+    }
+
+    if (gender.isNotEmpty) return gender;
+    if (age != null) return "$age years";
+    return "No medical details";
+  }
+
+  String _visitsText(int index) {
+    final visits = index + 1;
+    return "$visits visit${visits > 1 ? 's' : ''}";
+  }
+
+  String _riskFromPatient(PatientModel patient) {
+    final history = (patient.medicalHistory ?? '').toLowerCase();
+
+    if (history.contains('diabetes') ||
+        history.contains('heart') ||
+        history.contains('hypertension') ||
+        history.contains('critical')) {
+      return "High";
+    }
+
+    if (history.isNotEmpty) {
+      return "Medium";
+    }
+
+    return "Low";
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _TopHeader(),
-          const SizedBox(height: 14),
+    final patientCount = _patients.length;
+    final previewPatients = _patients.take(3).toList();
 
-          // ✅ Priority Panel
-          _PriorityPanel(
-            critical: 1,
-            upcoming: 2,
-            missed: 0,
-            message: "3 patients need attention now",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AlertsScreen()),
-              );
-            },
-          ),
+    return RefreshIndicator(
+      onRefresh: _loadPatients,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _TopHeader(),
+            const SizedBox(height: 14),
 
-          const SizedBox(height: 14),
+            _PriorityPanel(
+              critical: 1,
+              upcoming: 2,
+              missed: 0,
+              message: "3 patients need attention now",
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AlertsScreen()),
+                );
+              },
+            ),
 
-          // ✅ Robot Status Widget
-          _RobotStatusCard(
-            status: "Online",
-            battery: 78,
-            room: "Room 203",
-            task: "Vitals check in progress",
-            lastUpdated: "2 min ago",
-            onControl: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const RobotControlScreen()),
-              );
-            },
-          ),
+            const SizedBox(height: 14),
 
-          const SizedBox(height: 14),
+            _RobotStatusCard(
+              status: "Online",
+              battery: 78,
+              room: "Room 203",
+              task: "Vitals check in progress",
+              lastUpdated: "2 min ago",
+              onControl: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RobotControlScreen()),
+                );
+              },
+            ),
 
-          // ✅ Today’s schedule
-          const _SectionTitle("Today’s Schedule"),
-          const SizedBox(height: 10),
-          _ScheduleCard(
-            items: const [
-              _ScheduleItem(time: "09:00", patient: "Olivia", task: "Check vitals"),
-              _ScheduleItem(time: "11:30", patient: "Sara", task: "Drug delivery"),
-              _ScheduleItem(time: "14:00", patient: "Youssef", task: "Video consult"),
-            ],
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const MonitoringDashboardScreen()),
-              );
-            },
-          ),
+            const SizedBox(height: 14),
 
-          const SizedBox(height: 14),
+            const _SectionTitle("Today’s Schedule"),
+            const SizedBox(height: 10),
+            _ScheduleCard(
+              items: const [
+                _ScheduleItem(time: "09:00", patient: "Olivia", task: "Check vitals"),
+                _ScheduleItem(time: "11:30", patient: "Sara", task: "Drug delivery"),
+                _ScheduleItem(time: "14:00", patient: "Youssef", task: "Video consult"),
+              ],
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const MonitoringDashboardScreen(),
+                  ),
+                );
+              },
+            ),
 
-          // ✅ Stats (smaller)
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStat(
-                  title: "Patients",
-                  value: "30",
-                  icon: Icons.people_outline,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const PatientsListScreen()),
-                    );
-                  },
+            const SizedBox(height: 14),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniStat(
+                    title: "Patients",
+                    value: _isLoading ? "..." : "$patientCount",
+                    icon: Icons.people_outline,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PatientsListScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _MiniStat(
-                  title: "Alerts",
-                  value: "2",
-                  icon: Icons.notifications_none,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AlertsScreen()),
-                    );
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MiniStat(
+                    title: "Alerts",
+                    value: "2",
+                    icon: Icons.notifications_none,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AlertsScreen()),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
 
-          const SizedBox(height: 18),
+            const SizedBox(height: 18),
 
-// ✅ Doctor tools (pro buttons)
-          const _SectionTitle("Doctor Tools"),
-          const SizedBox(height: 10),
+            const _SectionTitle("Doctor Tools"),
+            const SizedBox(height: 10),
 
-          Row(
-            children: [
-              Expanded(
-                child: _SecondaryActionButton(
-                  text: "Approvals",
-                  icon: Icons.verified_outlined,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ApprovalsScreen()),
-                    );
-                  },
+            Row(
+              children: [
+                Expanded(
+                  child: _SecondaryActionButton(
+                    text: "Approvals",
+                    icon: Icons.verified_outlined,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ApprovalsScreen()),
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-
-              // ✅ هنا التعديل الوحيد: Treatment Plans (حل الـ overflow)
-              Expanded(
-                child: _SecondaryActionButton(
-                  text: "Treatment Plans",
-                  icon: Icons.assignment_outlined,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TreatmentPlansScreen()),
-                    );
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SecondaryActionButton(
+                    text: "Treatment Plans",
+                    icon: Icons.assignment_outlined,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TreatmentPlansScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-          _PrimaryActionButton(
-            text: "Reports Dashboard",
-            icon: Icons.bar_chart_rounded,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ReportsDashboardScreen()),
-              );
-            },
-          ),
+            _PrimaryActionButton(
+              text: "Reports Dashboard",
+              icon: Icons.bar_chart_rounded,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ReportsDashboardScreen(),
+                  ),
+                );
+              },
+            ),
 
-          const SizedBox(height: 18),
+            const SizedBox(height: 18),
 
-          // ✅ Replace Recent Patients -> My Patients Today
-          const _SectionTitle("My Patients Today"),
-          const SizedBox(height: 10),
+            const _SectionTitle("My Patients Today"),
+            const SizedBox(height: 10),
 
-          _PatientTodayCard(
-            name: "Olivia Turner",
-            specialty: "Chickenpox (Varicella)",
-            visits: "3 visits",
-            risk: "High",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PatientProfileScreen()),
-              );
-            },
-          ),
-          _PatientTodayCard(
-            name: "Sara Ibrahim",
-            specialty: "Mpox viral infection",
-            visits: "1 visit",
-            risk: "Medium",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PatientProfileScreen()),
-              );
-            },
-          ),
-          _PatientTodayCard(
-            name: "Youssef Hassan",
-            specialty: "Smallpox – Variola virus",
-            visits: "2 visits",
-            risk: "Low",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PatientProfileScreen()),
-              );
-            },
-          ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              _ErrorCard(
+                message: _error!,
+                onRetry: _loadPatients,
+              )
+            else if (_patients.isEmpty)
+                const _EmptyStateCard(
+                  message: "No patients assigned yet.",
+                )
+              else
+                Column(
+                  children: [
+                    for (int i = 0; i < previewPatients.length; i++)
+                      _PatientTodayCard(
+                        name: previewPatients[i].fullName,
+                        specialty: _patientSubtitle(previewPatients[i]),
+                        visits: _visitsText(i),
+                        risk: _riskFromPatient(previewPatients[i]),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PatientProfileScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
 
-          const SizedBox(height: 20),
-        ],
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
@@ -256,6 +344,8 @@ class _HomeTab extends StatelessWidget {
 /// =================== TOP HEADER ===================
 
 class _TopHeader extends StatelessWidget {
+  const _TopHeader();
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -326,6 +416,7 @@ class _TopHeader extends StatelessWidget {
 class _CircleIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+
   const _CircleIcon({required this.icon, required this.onTap});
 
   @override
@@ -401,7 +492,6 @@ class _PriorityPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-
             Row(
               children: [
                 Expanded(
@@ -432,9 +522,7 @@ class _PriorityPanel extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 10),
-
             Row(
               children: [
                 Expanded(
@@ -515,7 +603,7 @@ class _PriorityChip extends StatelessWidget {
 /// =================== ROBOT STATUS ===================
 
 class _RobotStatusCard extends StatelessWidget {
-  final String status; // Online/Offline
+  final String status;
   final int battery;
   final String room;
   final String task;
@@ -560,8 +648,10 @@ class _RobotStatusCard extends StatelessWidget {
                   color: AppColors.inputBackground,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.smart_toy_outlined,
-                    color: AppColors.primary),
+                child: const Icon(
+                  Icons.smart_toy_outlined,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -575,8 +665,7 @@ class _RobotStatusCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: (online ? Colors.green : Colors.grey).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(20),
@@ -593,7 +682,6 @@ class _RobotStatusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-
           Row(
             children: [
               Expanded(
@@ -631,12 +719,11 @@ class _RobotStatusCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-
           _PrimaryActionButton(
             text: "Control Robot",
             icon: Icons.smart_toy_outlined,
             onTap: onControl,
-          )
+          ),
         ],
       ),
     );
@@ -760,8 +847,10 @@ class _ScheduleCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
-                      color: AppColors.primary),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.primary,
+                  ),
                 ],
               ),
               if (i != items.length - 1) ...[
@@ -865,7 +954,7 @@ class _PatientTodayCard extends StatelessWidget {
   final String name;
   final String specialty;
   final String visits;
-  final String risk; // High/Medium/Low
+  final String risk;
   final VoidCallback onTap;
 
   const _PatientTodayCard({
@@ -943,8 +1032,7 @@ class _PatientTodayCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: rc.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
@@ -960,8 +1048,7 @@ class _PatientTodayCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.inputBackground,
                     borderRadius: BorderRadius.circular(20),
@@ -978,6 +1065,76 @@ class _PatientTodayCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.red.withOpacity(0.15)),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.redAccent, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: onRetry,
+            child: const Text("Retry"),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyStateCard extends StatelessWidget {
+  final String message;
+
+  const _EmptyStateCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: AppColors.textLight,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -1098,8 +1255,6 @@ class _SecondaryActionButton extends StatelessWidget {
           children: [
             Icon(icon, color: AppColors.primary, size: 20),
             const SizedBox(width: 8),
-
-            // ✅ FIX: prevents overflow
             Flexible(
               child: Text(
                 text,

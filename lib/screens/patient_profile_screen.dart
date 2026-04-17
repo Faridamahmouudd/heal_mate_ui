@@ -1,24 +1,35 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../widgets/gradient_button.dart';
-import 'pox_treatment_plans_screen.dart';
-// شاشات مرتبطة بالمريض
 import 'chat_screen.dart';
 import 'robot_control_screen.dart';
-
-// ✅ شاشة Treatment Plans الجديدة للجدرى (Positive فقط)
 import 'robot_treatment_plans_screen.dart';
 
 class PatientProfileScreen extends StatelessWidget {
-  const PatientProfileScreen({super.key});
+  final int patientId;
+  final String patientName;
+  final String patientAvatar;
+  final String patientSubtitle;
+  final String specialty;
+  final String room;
+  final int age;
+  final String status;
+
+  const PatientProfileScreen({
+    super.key,
+    this.patientId = 1,
+    this.patientName = "Olivia Turner",
+    this.patientAvatar = "assets/images/patient_avatar.jpeg",
+    this.patientSubtitle = "Room 206 • Patient",
+    this.specialty = "Dermato-Endocrinology",
+    this.room = "206",
+    this.age = 34,
+    this.status = "Stable",
+  });
 
   @override
   Widget build(BuildContext context) {
-    // ✅ بيانات المريض الحالية (ثابتة حاليا)
-    final patientId = "pt_1042";
-    final patientName = "Olivia Turner";
-    final patientAvatar = "assets/images/patient_avatar.jpeg";
-    final patientSubtitle = "Room 206 • Patient";
+    final chatId = "patient_$patientId";
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -28,42 +39,57 @@ class PatientProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Header(),
+              const _Header(),
               const SizedBox(height: 16),
-              const _TopPatientCard(),
+
+              _TopPatientCard(
+                patientId: patientId,
+                patientName: patientName,
+                patientAvatar: patientAvatar,
+                specialty: specialty,
+                room: room,
+                age: age,
+                status: status,
+              ),
+
               const SizedBox(height: 20),
 
-              // ✅ Care Team (Nurse فقط)
               const _SectionTitle("Care Team"),
               const SizedBox(height: 10),
+
               _CareTeamSection(
-                chatId: patientId,
+                patientId: patientId,
+                chatId: chatId,
                 patientName: patientName,
                 patientAvatar: patientAvatar,
                 patientSubtitle: patientSubtitle,
               ),
+
               const SizedBox(height: 20),
 
               const _SectionTitle("Quick Actions"),
               const SizedBox(height: 12),
 
-              // ✅ Quick Actions (Updated for new robot functions)
               _QuickActionsRow(
-                chatId: patientId,
+                patientId: patientId,
+                chatId: chatId,
                 patientName: patientName,
                 patientAvatar: patientAvatar,
                 patientSubtitle: patientSubtitle,
               ),
+
               const SizedBox(height: 24),
 
               const _SectionTitle("Today’s Vitals"),
               const SizedBox(height: 12),
               const _VitalsGrid(),
+
               const SizedBox(height: 24),
 
               const _SectionTitle("Recent Logs"),
               const SizedBox(height: 12),
               const _LogsList(),
+
               const SizedBox(height: 24),
             ],
           ),
@@ -73,8 +99,9 @@ class PatientProfileScreen extends StatelessWidget {
   }
 }
 
-/// ================= HEADER =================
 class _Header extends StatelessWidget {
+  const _Header();
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -100,12 +127,31 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// ================= TOP CARD (Patient Info) =================
 class _TopPatientCard extends StatelessWidget {
-  const _TopPatientCard();
+  final int patientId;
+  final String patientName;
+  final String patientAvatar;
+  final String specialty;
+  final String room;
+  final int age;
+  final String status;
+
+  const _TopPatientCard({
+    required this.patientId,
+    required this.patientName,
+    required this.patientAvatar,
+    required this.specialty,
+    required this.room,
+    required this.age,
+    required this.status,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = status.toLowerCase() == "stable"
+        ? Colors.green
+        : Colors.orange;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -124,48 +170,56 @@ class _TopPatientCard extends StatelessWidget {
           Container(
             width: 70,
             height: 70,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
               image: DecorationImage(
-                image: AssetImage("assets/images/patient_avatar.jpeg"),
+                image: AssetImage(patientAvatar),
                 fit: BoxFit.cover,
               ),
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Olivia Turner",
-                  style: TextStyle(
+                  patientName,
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textDark,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  "Dermato-Endocrinology",
-                  style: TextStyle(
+                  specialty,
+                  style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textLight,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _InfoChip(icon: Icons.badge_outlined, text: "ID: PT-1042"),
-                    _InfoChip(icon: Icons.cake_outlined, text: "Age: 34"),
                     _InfoChip(
-                        icon: Icons.meeting_room_outlined, text: "Room 206"),
+                      icon: Icons.badge_outlined,
+                      text: "ID: PT-$patientId",
+                    ),
+                    _InfoChip(
+                      icon: Icons.cake_outlined,
+                      text: "Age: $age",
+                    ),
+                    _InfoChip(
+                      icon: Icons.meeting_room_outlined,
+                      text: "Room $room",
+                    ),
                     _InfoChip(
                       icon: Icons.circle,
-                      text: "Stable",
-                      iconColor: Colors.green,
+                      text: status,
+                      iconColor: statusColor,
                     ),
                   ],
                 ),
@@ -215,14 +269,15 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-/// ================= CARE TEAM (Nurse فقط) =================
 class _CareTeamSection extends StatelessWidget {
+  final int patientId;
   final String chatId;
   final String patientName;
   final String patientAvatar;
   final String patientSubtitle;
 
   const _CareTeamSection({
+    required this.patientId,
     required this.chatId,
     required this.patientName,
     required this.patientAvatar,
@@ -245,6 +300,7 @@ class _CareTeamSection extends StatelessWidget {
               chatName: patientName,
               avatarPath: patientAvatar,
               subtitle: patientSubtitle,
+              otherUserId: patientId,
             ),
           ),
         );
@@ -342,14 +398,15 @@ class _CareTeamRow extends StatelessWidget {
   }
 }
 
-/// ================= QUICK ACTIONS (Updated) =================
 class _QuickActionsRow extends StatelessWidget {
+  final int patientId;
   final String chatId;
   final String patientName;
   final String patientAvatar;
   final String patientSubtitle;
 
   const _QuickActionsRow({
+    required this.patientId,
     required this.chatId,
     required this.patientName,
     required this.patientAvatar,
@@ -378,6 +435,7 @@ class _QuickActionsRow extends StatelessWidget {
                     chatName: patientName,
                     avatarPath: patientAvatar,
                     subtitle: patientSubtitle,
+                    otherUserId: patientId,
                   ),
                 ),
               );
@@ -389,7 +447,6 @@ class _QuickActionsRow extends StatelessWidget {
           child: GradientButton(
             text: "Robot Control",
             onTap: () {
-              // ✅ الجديد: شاشة التحكم (Navigation camera + movement)
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -407,19 +464,17 @@ class _QuickActionsRow extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const PoxTreatmentPlansScreen(),
+                  builder: (_) => const RobotTreatmentPlansScreen(),
                 ),
               );
             },
           ),
-
         ),
       ],
     );
   }
 }
 
-/// ================= VITALS =================
 class _VitalsGrid extends StatelessWidget {
   const _VitalsGrid();
 
@@ -494,7 +549,7 @@ class _VitalItem extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.inputBackground,
               shape: BoxShape.circle,
             ),
@@ -531,7 +586,6 @@ class _VitalItem extends StatelessWidget {
   }
 }
 
-/// ================= LOGS =================
 class _LogsList extends StatelessWidget {
   const _LogsList();
 

@@ -5,11 +5,12 @@ import 'doctor_home_screen.dart';
 import 'login_screen.dart';
 import '../services/biometric_service.dart';
 import '../models/user_role.dart';
-
+import '../services/api/auth_api_service.dart';
+import '../Nurse/nurse_home_screen.dart';
+import '../Patient/patient_home_screen.dart';
 
 class CreateAccountScreen extends StatefulWidget {
-  final UserRole? role; // ممكن تكون null لو جت من مكان تاني
-
+  final UserRole? role;
 
   const CreateAccountScreen({super.key, this.role});
 
@@ -18,9 +19,18 @@ class CreateAccountScreen extends StatefulWidget {
 }
 
 class _CreateAccountScreenState extends State<CreateAccountScreen> {
-  String _password = '';
+  final AuthApiService _authApiService = AuthApiService();
 
-  // ===== Password checks =====
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  String _password = '';
+  bool _isLoading = false;
+  bool _acceptedPrivacy = true;
+  bool _obscurePassword = true;
+
   bool get _hasMinLength => _password.length >= 8 && _password.length <= 12;
   bool get _hasUppercase => _password.contains(RegExp(r'[A-Z]'));
   bool get _hasLowercase => _password.contains(RegExp(r'[a-z]'));
@@ -37,7 +47,108 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
           _hasNoSpaces;
 
   @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _mobileController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  String _mapRoleToApi(UserRole? role) {
+    switch (role) {
+      case UserRole.nurse:
+        return "nurse";
+      case UserRole.patient:
+        return "patient";
+      case UserRole.doctor:
+      default:
+        return "doctor";
+    }
+  }
+
+  void _goHomeByRole(UserRole role) {
+    Widget target;
+
+    if (role == UserRole.nurse) {
+      target = const NurseHomeScreen();
+    } else if (role == UserRole.patient) {
+      target = const PatientHomeScreen();
+    } else {
+      target = const DoctorHomeScreen();
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => target),
+    );
+  }
+
+  Future<void> _onRegisterPressed() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final selectedRole = widget.role ?? UserRole.doctor;
+    final apiRole = _mapRoleToApi(selectedRole);
+
+    if (email.isEmpty) {
+      _showSnackBar("Please enter your email");
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showSnackBar("Please enter your password");
+      return;
+    }
+
+    if (!_isPasswordValid) {
+      _showSnackBar("Please complete all password requirements first.");
+      return;
+    }
+
+    if (!_acceptedPrivacy) {
+      _showSnackBar("Please accept the privacy policy first.");
+      return;
+    }
+
+    try {
+      setState(() => _isLoading = true);
+
+      await _authApiService.register(
+        email: email,
+        password: password,
+        role: apiRole,
+      );
+
+      if (!mounted) return;
+
+      _showSnackBar("Account created successfully. Please login.");
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LoginScreen(role: selectedRole),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar("Register failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final selectedRole = widget.role ?? UserRole.doctor;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -46,7 +157,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== Top bar =====
               Row(
                 children: [
                   IconButton(
@@ -69,24 +179,21 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Padding(
-                padding: EdgeInsets.only(left: 12),
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
                 child: Text(
-                  "Let’s set up your new HealMate account",
-                  style: TextStyle(
+                  "Let’s set up your new HealMate ${_mapRoleToApi(selectedRole)} account",
+                  style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textLight,
                   ),
                 ),
               ),
-
               const SizedBox(height: 24),
 
-              // ===== Card with form fields =====
               Container(
                 width: double.infinity,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
@@ -101,7 +208,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Full name
                     const Text(
                       "Full Name",
                       style: TextStyle(
@@ -112,11 +218,11 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     ),
                     const SizedBox(height: 6),
                     _inputField(
+                      controller: _fullNameController,
                       hint: "Dr. Farida Mahmoud",
                       keyboardType: TextInputType.name,
                     ),
 
-                    // Email
                     const Text(
                       "Email",
                       style: TextStyle(
@@ -127,12 +233,12 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     ),
                     const SizedBox(height: 6),
                     _inputField(
+                      controller: _emailController,
                       hint: "example@example.com",
                       keyboardType: TextInputType.emailAddress,
                       prefixIcon: Icons.email_outlined,
                     ),
 
-                    // Mobile number
                     const Text(
                       "Mobile Number",
                       style: TextStyle(
@@ -143,12 +249,12 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     ),
                     const SizedBox(height: 6),
                     _inputField(
+                      controller: _mobileController,
                       hint: "0123456789",
                       keyboardType: TextInputType.phone,
                       prefixIcon: Icons.phone_outlined,
                     ),
 
-                    // Password
                     const Text(
                       "Password",
                       style: TextStyle(
@@ -160,7 +266,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                     const SizedBox(height: 6),
                     _passwordField(),
 
-                    // Requirements card
                     if (_password.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       _PasswordRequirementsCard(
@@ -175,7 +280,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
                     const SizedBox(height: 14),
 
-                    // Privacy checkbox
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -183,8 +287,12 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                           width: 22,
                           height: 22,
                           child: Checkbox(
-                            value: true,
-                            onChanged: (_) {},
+                            value: _acceptedPrivacy,
+                            onChanged: (v) {
+                              setState(() {
+                                _acceptedPrivacy = v ?? false;
+                              });
+                            },
                             activeColor: AppColors.primary,
                             side: const BorderSide(
                               color: Colors.grey,
@@ -195,8 +303,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
-                            "I agree with the Privacy Policy and allow HealMate "
-                                "to securely store my medical data.",
+                            "I agree with the Privacy Policy and allow HealMate to securely store my medical data.",
                             style: TextStyle(
                               color: AppColors.textLight,
                               fontSize: 12,
@@ -211,35 +318,23 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
               const SizedBox(height: 22),
 
-              // ===== Sign up button =====
-              Opacity(
+              _isLoading
+                  ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+                  : Opacity(
                 opacity: _isPasswordValid ? 1 : 0.55,
                 child: GradientButton(
                   text: "Sign up",
-                  onTap: () {
-                    if (!_isPasswordValid) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              "Please complete all password requirements first."),
-                        ),
-                      );
-                      return;
-                    }
-
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DoctorHomeScreen(),
-                      ),
-                    );
-                  },
+                  onTap: _onRegisterPressed,
                 ),
               ),
 
               const SizedBox(height: 14),
 
-              // ===== Fingerprint button =====
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -268,18 +363,15 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                   onPressed: () async {
                     final success = await BiometricService.authenticate();
 
+                    if (!mounted) return;
+
                     if (success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text("Fingerprint enabled successfully"),
                         ),
                       );
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const DoctorHomeScreen(),
-                        ),
-                      );
+                      _goHomeByRole(selectedRole);
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -293,7 +385,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
               const SizedBox(height: 24),
 
-              // ===== divider "or sign up with" =====
               Row(
                 children: [
                   Expanded(
@@ -322,7 +413,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
               const SizedBox(height: 18),
 
-              // ===== Social icons row =====
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -334,7 +424,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
               const SizedBox(height: 24),
 
-              // ===== Already have account =====
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -350,7 +439,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const LoginScreen(),
+                          builder: (_) => LoginScreen(role: widget.role),
                         ),
                       );
                     },
@@ -373,14 +462,13 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
     );
   }
 
-  // ====== Widgets helpers ======
-
   Widget _passwordField() {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       child: TextField(
+        controller: _passwordController,
         keyboardType: TextInputType.visiblePassword,
-        obscureText: true,
+        obscureText: _obscurePassword,
         onChanged: (value) {
           setState(() => _password = value);
         },
@@ -394,6 +482,20 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             color: AppColors.textLight,
             size: 20,
           ),
+          suffixIcon: IconButton(
+            onPressed: () {
+              setState(() {
+                _obscurePassword = !_obscurePassword;
+              });
+            },
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              color: AppColors.textLight,
+              size: 20,
+            ),
+          ),
           hintText: "••••••••",
           hintStyle: TextStyle(
             color: AppColors.textLight.withOpacity(0.7),
@@ -401,8 +503,10 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
           ),
           filled: true,
           fillColor: AppColors.inputBackground,
-          contentPadding:
-          const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: 18,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
@@ -413,6 +517,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 
   static Widget _inputField({
+    required TextEditingController controller,
     required String hint,
     bool isPass = false,
     TextInputType keyboardType = TextInputType.text,
@@ -421,6 +526,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       child: TextField(
+        controller: controller,
         keyboardType: keyboardType,
         obscureText: isPass,
         style: const TextStyle(
@@ -478,7 +584,6 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   }
 }
 
-/// ===== Password requirements card =====
 class _PasswordRequirementsCard extends StatelessWidget {
   final bool hasMinLength;
   final bool hasUppercase;

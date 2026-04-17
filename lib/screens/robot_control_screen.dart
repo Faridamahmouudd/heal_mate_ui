@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../widgets/gradient_button.dart';
+import '../core/storage/secure_storage_service.dart';
+import '../services/api/robot_api_service.dart';
 import 'capture_skin_screen.dart';
 import 'run_diagnosis_screen.dart';
 import 'read_temperature_screen.dart';
 import 'robot_treatment_plans_screen.dart';
-
 
 enum SkinDiagnosis { none, chickenpoxPositive, chickenpoxNegative }
 
@@ -17,58 +18,106 @@ class RobotControlScreen extends StatefulWidget {
 }
 
 class _RobotControlScreenState extends State<RobotControlScreen> {
-  // Drawer
-  bool _drawerOpen = false;
+  final RobotApiService _robotApiService = RobotApiService();
 
-  // Temperature (Vitals = Temperature only)
+  bool _drawerOpen = false;
   double? _temperature;
   DateTime? _tempTime;
-
-  // Skin image + diagnosis
-  String? _skinImageAsset; // placeholder asset path
+  String? _skinImageAsset;
   SkinDiagnosis _diagnosis = SkinDiagnosis.none;
-
-  // Treatment plan suggestion
   String? _suggestedPlan;
   bool _isGeneratingPlan = false;
   bool _isDiagnosing = false;
 
-  // ================== Robot Actions (Mock placeholders) ==================
+  bool _isSendingCommand = false;
+  int _doctorId = 0;
+  int? _patientId = 2;
 
-  void _openDrawer() {
-    if (_drawerOpen) return;
-    setState(() => _drawerOpen = true);
-    debugPrint("OPEN medicine drawer");
-    // TODO: robotService.openDrawer();
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorId();
   }
 
-  void _closeDrawer() {
-    if (!_drawerOpen) return;
+  Future<void> _loadDoctorId() async {
+    final saved = await SecureStorageService.getUserId();
+    final parsed = int.tryParse(saved ?? '');
+    setState(() {
+      _doctorId = parsed ?? 0;
+    });
+  }
+
+  Future<void> _sendRobotCommand(
+      String command, {
+        String? parameters,
+        String? successMessage,
+      }) async {
+    if (_isSendingCommand) return;
+
+    if (_doctorId == 0) {
+      _showSnack("Doctor ID not found. Please login first.");
+      return;
+    }
+
+    try {
+      setState(() => _isSendingCommand = true);
+
+      await _robotApiService.sendCommand(
+        doctorId: _doctorId,
+        patientId: _patientId,
+        command: command,
+        parameters: parameters,
+      );
+
+      if (!mounted) return;
+      if (successMessage != null) {
+        _showSnack(successMessage);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack("Robot command failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingCommand = false);
+      }
+    }
+  }
+
+  Future<void> _openDrawer() async {
+    await _sendRobotCommand(
+      "OPEN_DRAWER",
+      successMessage: "Medicine drawer opened",
+    );
+
+    if (!mounted) return;
+    setState(() => _drawerOpen = true);
+  }
+
+  Future<void> _closeDrawer() async {
+    await _sendRobotCommand(
+      "CLOSE_DRAWER",
+      successMessage: "Medicine drawer closed",
+    );
+
+    if (!mounted) return;
     setState(() => _drawerOpen = false);
-    debugPrint("CLOSE medicine drawer");
-    // TODO: robotService.closeDrawer();
   }
 
   void _readTemperature() {
-    // Mock temperature read
     final now = DateTime.now();
-    final mock = 38.2; // TODO: get from robot sensor
+    final mock = 38.2;
     setState(() {
       _temperature = mock;
       _tempTime = now;
     });
-    debugPrint("READ temperature = $mock");
   }
 
   void _captureSkinImage() {
-    // Mock capture
     setState(() {
-      _skinImageAsset = "assets/images/skin_sample.jpg"; // put any sample in assets
+      _skinImageAsset = "assets/images/skin_sample.jpg";
       _diagnosis = SkinDiagnosis.none;
       _suggestedPlan = null;
     });
-    debugPrint("CAPTURE skin image");
-    // TODO: camera capture -> file path
   }
 
   Future<void> _runDiagnosis() async {
@@ -76,19 +125,16 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
       _showSnack("Capture a skin image first");
       return;
     }
+
     setState(() => _isDiagnosing = true);
 
-    // Mock AI delay
     await Future.delayed(const Duration(milliseconds: 900));
 
     setState(() {
-      _diagnosis = SkinDiagnosis.chickenpoxPositive; // TODO: AI result
-      // when new diagnosis, clear plan to regenerate
+      _diagnosis = SkinDiagnosis.chickenpoxPositive;
       _suggestedPlan = null;
       _isDiagnosing = false;
     });
-
-    debugPrint("AI diagnosis = $_diagnosis");
   }
 
   Future<void> _generateTreatmentPlan() async {
@@ -106,13 +152,14 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
       "Suggested Plan (AI):\n• Isolation & hydration\n• Antipyretic (paracetamol) if fever\n• Skin care + itch relief\n• Doctor review required";
       _isGeneratingPlan = false;
     });
-
-    debugPrint("GENERATE treatment plan");
   }
 
-  void _startAutoCheckup() {
-    debugPrint("Start Auto Checkup");
-    // Example flow (mock): temp -> capture -> diagnosis -> plan
+  Future<void> _startAutoCheckup() async {
+    await _sendRobotCommand(
+      "AUTO_CHECKUP",
+      successMessage: "Auto checkup started",
+    );
+
     _readTemperature();
     _captureSkinImage();
   }
@@ -122,8 +169,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
       SnackBar(content: Text(msg)),
     );
   }
-
-  // ================== UI helpers ==================
 
   String _formatTime(DateTime? t) {
     if (t == null) return "—";
@@ -156,8 +201,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
     }
   }
 
-  // ================== Build ==================
-
   @override
   Widget build(BuildContext context) {
     final temp = _temperature;
@@ -173,7 +216,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== Header =====
               Row(
                 children: [
                   _IconCircleButton(
@@ -191,13 +233,21 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                       ),
                     ),
                   ),
-                  const _StatusChip(text: "Online", icon: Icons.wifi_rounded),
+                  _isSendingCommand
+                      ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const _StatusChip(
+                    text: "Online",
+                    icon: Icons.wifi_rounded,
+                  ),
                 ],
               ),
 
               const SizedBox(height: 14),
 
-              // ===== Skin Camera Card (preview) =====
               Container(
                 width: double.infinity,
                 height: 210,
@@ -238,8 +288,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                               "Add a sample image at:\n$_skinImageAsset",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color:
-                                AppColors.textLight.withOpacity(0.9),
+                                color: AppColors.textLight.withOpacity(0.9),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -252,7 +301,9 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                         top: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.92),
                             borderRadius: BorderRadius.circular(14),
@@ -260,8 +311,11 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
-                              Icon(Icons.camera_alt_rounded,
-                                  size: 16, color: AppColors.primary),
+                              Icon(
+                                Icons.camera_alt_rounded,
+                                size: 16,
+                                color: AppColors.primary,
+                              ),
                               SizedBox(width: 6),
                               Text(
                                 "Navigation Camera",
@@ -282,7 +336,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
               const SizedBox(height: 16),
 
-              // ===== Key Status Tiles =====
               const Text(
                 "Robot Status",
                 style: TextStyle(
@@ -333,10 +386,8 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                 ],
               ),
 
-
               const SizedBox(height: 18),
 
-              // ===== Movement (D-Pad) =====
               const Text(
                 "Movement Controls",
                 style: TextStyle(
@@ -367,7 +418,11 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                       _DpadButton(
                         icon: Icons.keyboard_arrow_up_rounded,
                         label: "Forward",
-                        onTap: () => debugPrint("Move Forward"),
+                        onTap: () => _sendRobotCommand(
+                          "MOVE_FORWARD",
+                          parameters: '{"speed":2}',
+                          successMessage: "Moving forward",
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -376,19 +431,30 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                           _DpadButton(
                             icon: Icons.keyboard_arrow_left_rounded,
                             label: "Left",
-                            onTap: () => debugPrint("Move Left"),
+                            onTap: () => _sendRobotCommand(
+                              "MOVE_LEFT",
+                              parameters: '{"speed":2}',
+                              successMessage: "Moving left",
+                            ),
                           ),
                           const SizedBox(width: 10),
                           _DpadCenterButton(
                             icon: Icons.stop_rounded,
                             label: "Stop",
-                            onTap: () => debugPrint("Stop"),
+                            onTap: () => _sendRobotCommand(
+                              "STOP",
+                              successMessage: "Robot stopped",
+                            ),
                           ),
                           const SizedBox(width: 10),
                           _DpadButton(
                             icon: Icons.keyboard_arrow_right_rounded,
                             label: "Right",
-                            onTap: () => debugPrint("Move Right"),
+                            onTap: () => _sendRobotCommand(
+                              "MOVE_RIGHT",
+                              parameters: '{"speed":2}',
+                              successMessage: "Moving right",
+                            ),
                           ),
                         ],
                       ),
@@ -399,19 +465,31 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                           _DpadButton(
                             icon: Icons.rotate_left_rounded,
                             label: "Rotate L",
-                            onTap: () => debugPrint("Rotate Left"),
+                            onTap: () => _sendRobotCommand(
+                              "ROTATE_LEFT",
+                              parameters: '{"speed":1}',
+                              successMessage: "Rotating left",
+                            ),
                           ),
                           const SizedBox(width: 10),
                           _DpadButton(
                             icon: Icons.keyboard_arrow_down_rounded,
                             label: "Backward",
-                            onTap: () => debugPrint("Move Backward"),
+                            onTap: () => _sendRobotCommand(
+                              "MOVE_BACKWARD",
+                              parameters: '{"speed":2}',
+                              successMessage: "Moving backward",
+                            ),
                           ),
                           const SizedBox(width: 10),
                           _DpadButton(
                             icon: Icons.rotate_right_rounded,
                             label: "Rotate R",
-                            onTap: () => debugPrint("Rotate Right"),
+                            onTap: () => _sendRobotCommand(
+                              "ROTATE_RIGHT",
+                              parameters: '{"speed":1}',
+                              successMessage: "Rotating right",
+                            ),
                           ),
                         ],
                       ),
@@ -422,7 +500,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
               const SizedBox(height: 18),
 
-              // ===== Robot Actions (Updated for new features) =====
               const Text(
                 "Robot Actions",
                 style: TextStyle(
@@ -445,9 +522,12 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                     icon: Icons.thermostat_rounded,
                     title: "Read Temperature",
                     onTap: () {
+                      _readTemperature();
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const ReadTemperatureScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const ReadTemperatureScreen(),
+                        ),
                       );
                     },
                   ),
@@ -455,39 +535,48 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                     icon: Icons.camera_alt_outlined,
                     title: "Capture Skin",
                     onTap: () {
+                      _captureSkinImage();
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const CaptureSkinScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const CaptureSkinScreen(),
+                        ),
                       );
                     },
                   ),
                   _ActionCard(
                     icon: Icons.biotech_outlined,
                     title: "Run Diagnosis",
-                    onTap: () {
+                    onTap: () async {
+                      await _runDiagnosis();
+                      if (!mounted) return;
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const RunDiagnosisScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const RunDiagnosisScreen(),
+                        ),
                       );
                     },
                   ),
                   _ActionCard(
                     icon: Icons.assignment_outlined,
                     title: "Treatment Plan",
-                    onTap: () {
+                    onTap: () async {
+                      await _generateTreatmentPlan();
+                      if (!mounted) return;
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const RobotTreatmentPlansScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const RobotTreatmentPlansScreen(),
+                        ),
                       );
                     },
                   ),
-
                 ],
               ),
 
               const SizedBox(height: 18),
 
-              // ===== Diagnosis Result Card =====
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -570,7 +659,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
               const SizedBox(height: 12),
 
-              // ===== Suggested Treatment Plan Card =====
               if (_suggestedPlan != null)
                 Container(
                   width: double.infinity,
@@ -614,7 +702,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             child: _OutlinePillButton(
                               text: "Send to Doctor",
                               icon: Icons.send_outlined,
-                              onTap: () => debugPrint("Send plan to doctor"),
+                              onTap: () => _showSnack("Plan sent to doctor"),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -622,7 +710,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             child: _OutlinePillButton(
                               text: "Edit",
                               icon: Icons.edit_outlined,
-                              onTap: () => debugPrint("Edit plan"),
+                              onTap: () => _showSnack("Edit plan"),
                             ),
                           ),
                         ],
@@ -633,7 +721,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
               const SizedBox(height: 18),
 
-              // ===== Medicine Drawer =====
               const Text(
                 "Medicine Drawer",
                 style: TextStyle(
@@ -670,8 +757,9 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
               const SizedBox(height: 16),
 
-              // ===== Primary CTA =====
-              GradientButton(
+              _isSendingCommand
+                  ? const Center(child: CircularProgressIndicator())
+                  : GradientButton(
                 text: "Start Auto Checkup",
                 onTap: _startAutoCheckup,
               ),
@@ -684,8 +772,6 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
     );
   }
 }
-
-// ================== Components ==================
 
 class _IconCircleButton extends StatelessWidget {
   final IconData icon;
@@ -820,54 +906,6 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
-class _SmallButton extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _SmallButton({
-    required this.text,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.primary,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withOpacity(0.22),
-              blurRadius: 14,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _OutlinePillButton extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -887,8 +925,13 @@ class _OutlinePillButton extends StatelessWidget {
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
-          side: BorderSide(color: AppColors.primary.withOpacity(0.35), width: 1.4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          side: BorderSide(
+            color: AppColors.primary.withOpacity(0.35),
+            width: 1.4,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -986,12 +1029,12 @@ class _DpadCenterButton extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.stop_rounded, color: Colors.white, size: 26),
-            SizedBox(height: 2),
+          children: [
+            Icon(icon, color: Colors.white, size: 26),
+            const SizedBox(height: 2),
             Text(
-              "Stop",
-              style: TextStyle(
+              label,
+              style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,

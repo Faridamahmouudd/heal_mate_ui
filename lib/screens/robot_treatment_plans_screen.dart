@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
-import '../services/robot_service.dart';
+import '../core/storage/secure_storage_service.dart';
+import '../services/api/robot_api_service.dart';
 
-/// ✅ أنواع الجُدري اللي الروبوت ممكن يشخصها
 enum PoxType { chickenpox, mpox, smallpox }
-
-/// ✅ نتيجة التشخيص
 enum DxResult { positive, negative, pending }
 
 String poxLabel(PoxType t) {
@@ -28,10 +26,14 @@ class RobotTreatmentPlansScreen extends StatefulWidget {
 }
 
 class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
-  /// ✅ هنا بتخزني الحالات اللي جاية من الروبوت/الـ AI
-  /// (حاليًا Dummy data)
+  final RobotApiService _robotApiService = RobotApiService();
+
+  int _doctorId = 0;
+  bool _sendingApprove = false;
+
   final List<_CasePlan> _cases = [
     _CasePlan(
+      patientId: 1,
       patientName: "Sara Ibrahim",
       room: "105",
       poxType: PoxType.chickenpox,
@@ -41,6 +43,7 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
       status: "Pending",
     ),
     _CasePlan(
+      patientId: 2,
       patientName: "Mariam Hassan",
       room: "118",
       poxType: PoxType.mpox,
@@ -50,6 +53,7 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
       status: "Pending",
     ),
     _CasePlan(
+      patientId: 3,
       patientName: "Youssef Hassan",
       room: "210",
       poxType: PoxType.smallpox,
@@ -59,8 +63,20 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
     ),
   ];
 
-  /// ✅ إنتِ غالبًا عايزة Positive فقط
   bool _positiveOnly = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorId();
+  }
+
+  Future<void> _loadDoctorId() async {
+    final saved = await SecureStorageService.getUserId();
+    setState(() {
+      _doctorId = int.tryParse(saved ?? '') ?? 0;
+    });
+  }
 
   List<_CasePlan> get _filteredCases {
     final all = List<_CasePlan>.from(_cases);
@@ -72,16 +88,43 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
   }
 
   Future<void> _approve(_CasePlan c) async {
-    setState(() => c.status = "Active");
+    if (_doctorId == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Doctor ID not found. Please login first.")),
+      );
+      return;
+    }
 
-    // ✅ افتح الدرج واغلقه بعد 30 ثانية
-    await RobotService.instance.dispenseMedicineAutoClose(seconds: 30);
+    try {
+      setState(() => _sendingApprove = true);
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text("Approved + Drawer opened (auto close in 30s)")),
-    );
+      await _robotApiService.sendCommand(
+        doctorId: _doctorId,
+        patientId: c.patientId,
+        command: "OPEN_DRAWER",
+        parameters: '{"autoCloseSeconds":30}',
+      );
+
+      if (!mounted) return;
+
+      setState(() => c.status = "Active");
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Approved + drawer open command sent"),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Approve failed: $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sendingApprove = false);
+      }
+    }
   }
 
   void _decline(_CasePlan c) {
@@ -150,7 +193,9 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(
-                            color: AppColors.primary, width: 1.4),
+                          color: AppColors.primary,
+                          width: 1.4,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -207,7 +252,6 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
       case DxResult.negative:
         return Colors.green;
       case DxResult.pending:
-      default:
         return Colors.orange;
     }
   }
@@ -219,7 +263,6 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
       case DxResult.negative:
         return "Negative";
       case DxResult.pending:
-      default:
         return "Pending";
     }
   }
@@ -245,10 +288,22 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
+        actions: [
+          if (_sendingApprove)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+        ],
       ),
       body: Column(
         children: [
-          // ✅ فلتر Positive Only
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
             child: Row(
@@ -256,7 +311,9 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
@@ -270,8 +327,10 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.filter_alt_outlined,
-                            color: AppColors.primary),
+                        const Icon(
+                          Icons.filter_alt_outlined,
+                          color: AppColors.primary,
+                        ),
                         const SizedBox(width: 10),
                         const Expanded(
                           child: Text(
@@ -294,7 +353,6 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
               ],
             ),
           ),
-
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
@@ -323,8 +381,8 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                         children: [
                           const CircleAvatar(
                             radius: 22,
-                            backgroundImage: AssetImage(
-                                "assets/images/patient_avatar.jpeg"),
+                            backgroundImage:
+                            AssetImage("assets/images/patient_avatar.jpeg"),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -349,11 +407,11 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 6),
-
-                                // ✅ Diagnosis chip (Positive/Negative)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 6),
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: _dxColor(c.result).withOpacity(0.12),
                                     borderRadius: BorderRadius.circular(999),
@@ -374,8 +432,6 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-
-                      // ✅ Treatment plan text
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
@@ -394,14 +450,13 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-
                       Row(
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              // ✅ Approve مفيد غالبًا لو Positive
                               onPressed: (c.status == "Pending" &&
-                                  c.result == DxResult.positive)
+                                  c.result == DxResult.positive &&
+                                  !_sendingApprove)
                                   ? () => _approve(c)
                                   : null,
                               style: ElevatedButton.styleFrom(
@@ -412,13 +467,17 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                                 padding:
                                 const EdgeInsets.symmetric(vertical: 12),
                               ),
-                              icon: const Icon(Icons.check_rounded,
-                                  color: Colors.white, size: 18),
+                              icon: const Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                               label: const Text(
                                 "Approve",
                                 style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
                           ),
@@ -428,20 +487,26 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                               onPressed: () => _modify(c),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(
-                                    color: AppColors.primary, width: 1.4),
+                                  color: AppColors.primary,
+                                  width: 1.4,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 padding:
                                 const EdgeInsets.symmetric(vertical: 12),
                               ),
-                              icon: const Icon(Icons.edit_outlined,
-                                  color: AppColors.primary, size: 18),
+                              icon: const Icon(
+                                Icons.edit_outlined,
+                                color: AppColors.primary,
+                                size: 18,
+                              ),
                               label: const Text(
                                 "Modify",
                                 style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w900),
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
                           ),
@@ -451,20 +516,26 @@ class _RobotTreatmentPlansScreenState extends State<RobotTreatmentPlansScreen> {
                               onPressed: () => _decline(c),
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(
-                                    color: Color(0xFFE53935), width: 1.4),
+                                  color: Color(0xFFE53935),
+                                  width: 1.4,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 padding:
                                 const EdgeInsets.symmetric(vertical: 12),
                               ),
-                              icon: const Icon(Icons.close_rounded,
-                                  color: Color(0xFFE53935), size: 18),
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: Color(0xFFE53935),
+                                size: 18,
+                              ),
                               label: const Text(
                                 "Decline",
                                 style: TextStyle(
-                                    color: Color(0xFFE53935),
-                                    fontWeight: FontWeight.w900),
+                                  color: Color(0xFFE53935),
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
                           ),
@@ -515,22 +586,16 @@ class _SmallStatus extends StatelessWidget {
 }
 
 class _CasePlan {
+  final int patientId;
   final String patientName;
   final String room;
-
-  /// ✅ نوع الجُدري
   final PoxType poxType;
-
-  /// ✅ نتيجة التشخيص
   final DxResult result;
-
-  /// ✅ خطة العلاج
   String plan;
-
-  /// ✅ حالة الخطة: Pending / Active / Declined
   String status;
 
   _CasePlan({
+    required this.patientId,
     required this.patientName,
     required this.room,
     required this.poxType,
