@@ -1,6 +1,14 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../constants/colors.dart';
+import 'chat_screen.dart';
 
 class TreatmentPlansScreen extends StatefulWidget {
   const TreatmentPlansScreen({super.key});
@@ -11,6 +19,7 @@ class TreatmentPlansScreen extends StatefulWidget {
 
 class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
   String _filter = "All";
+  bool _drawerOpen = false;
 
   final List<_PlanModel> _plans = [
     _PlanModel(
@@ -94,6 +103,358 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
     return _plans.where((p) => p.status == _filter).toList();
   }
 
+  Future<File> _generatePdf(_PlanModel plan) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (_) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              "HealMate Treatment Plan",
+              style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text("Patient: ${plan.patientName}"),
+            pw.Text("Specialty: ${plan.specialty}"),
+            pw.Text("Status: ${plan.status}"),
+            pw.Text("Source: ${plan.source}"),
+            if (plan.diagnosis != null) pw.Text("Diagnosis: ${plan.diagnosis}"),
+            pw.SizedBox(height: 16),
+            pw.Text(
+              plan.title,
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Text(plan.details),
+            pw.SizedBox(height: 16),
+            pw.Text("Next Action: ${plan.nextAction}"),
+            pw.Text("Last Updated: ${plan.lastUpdated}"),
+          ],
+        ),
+      ),
+    );
+
+    final dir = await getApplicationDocumentsDirectory();
+    final safeName = plan.patientName.replaceAll(" ", "_").toLowerCase();
+    final file = File("${dir.path}/${safeName}_treatment_plan.pdf");
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  Future<void> _exportPdf(_PlanModel plan) async {
+    Navigator.pop(context);
+    await Future.delayed(const Duration(milliseconds: 200));
+    final file = await _generatePdf(plan);
+    await Printing.layoutPdf(onLayout: (_) async => file.readAsBytes());
+  }
+
+  Future<void> _sharePlan(_PlanModel plan) async {
+    Navigator.pop(context);
+    await Future.delayed(const Duration(milliseconds: 200));
+    final file = await _generatePdf(plan);
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: "HealMate Treatment Plan for ${plan.patientName}",
+    );
+  }
+
+  void _messagePatient(_PlanModel plan) {
+    Navigator.pop(context);
+    Future.delayed(const Duration(milliseconds: 200), () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            chatId: "plan_${plan.patientName}",
+            chatName: plan.patientName,
+            avatarPath: plan.patientImage,
+            subtitle: "${plan.specialty} • Patient",
+          ),
+        ),
+      );
+    });
+  }
+
+  void _editPlan(_PlanModel plan) {
+    Navigator.pop(context);
+
+    Future.delayed(const Duration(milliseconds: 200), () {
+      final titleCtrl = TextEditingController(text: plan.title);
+      final detailsCtrl = TextEditingController(text: plan.details);
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        builder: (_) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 18,
+              right: 18,
+              top: 14,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 18,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  "Edit Treatment Plan",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _EditField(controller: titleCtrl, hint: "Plan title"),
+                const SizedBox(height: 10),
+                _EditField(
+                  controller: detailsCtrl,
+                  hint: "Plan details",
+                  maxLines: 7,
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final newTitle = titleCtrl.text.trim();
+                      final newDetails = detailsCtrl.text.trim();
+
+                      if (newTitle.isEmpty || newDetails.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Please fill all fields"),
+                          ),
+                        );
+                        return;
+                      }
+
+                      setState(() {
+                        plan.title = newTitle;
+                        plan.details = newDetails;
+                        plan.lastUpdated = "Just now";
+                      });
+
+                      Navigator.pop(context);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Plan updated successfully"),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      "Save Changes",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  void _approvePlan(_PlanModel plan) {
+    Navigator.pop(context);
+
+    setState(() {
+      plan.status = "Active";
+      plan.nextAction = "Approved • Medicine drawer opened";
+      plan.lastUpdated = "Just now";
+      _drawerOpen = true;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Approved ✅ • Opening medicine drawer...")),
+    );
+
+    Timer(const Duration(seconds: 30), () {
+      if (!mounted) return;
+      setState(() => _drawerOpen = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Drawer closed ✅")),
+      );
+    });
+  }
+
+  void _declinePlan(_PlanModel plan) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Decline Plan?"),
+        content: const Text("Are you sure you want to decline this plan?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+
+              setState(() {
+                plan.status = "Completed";
+                plan.nextAction = "Declined by doctor";
+                plan.lastUpdated = "Just now";
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Plan declined")),
+              );
+            },
+            child: const Text(
+              "Decline",
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addPlanSheet() {
+    final nameCtrl = TextEditingController();
+    final titleCtrl = TextEditingController();
+    final detailsCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 18,
+            right: 18,
+            top: 14,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 18,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "Add New Plan",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _EditField(controller: nameCtrl, hint: "Patient name"),
+              const SizedBox(height: 10),
+              _EditField(controller: titleCtrl, hint: "Plan title"),
+              const SizedBox(height: 10),
+              _EditField(
+                controller: detailsCtrl,
+                hint: "Plan details",
+                maxLines: 5,
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final name = nameCtrl.text.trim();
+                    final title = titleCtrl.text.trim();
+                    final details = detailsCtrl.text.trim();
+
+                    if (name.isEmpty || title.isEmpty || details.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Please fill all fields")),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      _plans.insert(
+                        0,
+                        _PlanModel(
+                          patientName: name,
+                          patientImage: "assets/images/patient_avatar.jpeg",
+                          specialty: "General",
+                          title: title,
+                          details: details,
+                          status: "Pending",
+                          nextAction: "Pending approval",
+                          lastUpdated: "Just now",
+                          source: "Doctor Plan",
+                          hasSkinImage: false,
+                          diagnosis: null,
+                        ),
+                      );
+                    });
+
+                    Navigator.pop(context);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Plan added successfully")),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    "Save Plan",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _openPlanSheet(_PlanModel plan) {
     showModalBottomSheet(
       context: context,
@@ -161,7 +522,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-
                   Row(
                     children: [
                       _SourceChip(text: plan.source),
@@ -181,7 +541,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         ),
                     ],
                   ),
-
                   const SizedBox(height: 14),
                   Text(
                     plan.title,
@@ -210,7 +569,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
                   if (plan.hasSkinImage) ...[
                     Container(
                       width: double.infinity,
@@ -219,8 +577,8 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         color: AppColors.inputBackground,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Row(
-                        children: const [
+                      child: const Row(
+                        children: [
                           Icon(Icons.image_outlined,
                               color: AppColors.primary, size: 18),
                           SizedBox(width: 8),
@@ -239,7 +597,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     ),
                     const SizedBox(height: 12),
                   ],
-
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -257,7 +614,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
                   Text(
                     "Last updated: ${plan.lastUpdated}",
@@ -267,7 +623,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
                   const SizedBox(height: 16),
                   const Text(
                     "Quick Actions",
@@ -278,20 +633,13 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-
                   Row(
                     children: [
                       Expanded(
                         child: _SheetActionButton(
                           icon: Icons.picture_as_pdf_outlined,
                           label: "Export PDF",
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("PDF Export (UI only for now)"),
-                              ),
-                            );
-                          },
+                          onTap: () => _exportPdf(plan),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -299,18 +647,11 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         child: _SheetActionButton(
                           icon: Icons.share_outlined,
                           label: "Share",
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Share (UI only for now)"),
-                              ),
-                            );
-                          },
+                          onTap: () => _sharePlan(plan),
                         ),
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -318,13 +659,7 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         child: _SheetActionButton(
                           icon: Icons.edit_outlined,
                           label: "Edit Plan",
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Edit Plan (placeholder)"),
-                              ),
-                            );
-                          },
+                          onTap: () => _editPlan(plan),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -332,21 +667,12 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         child: _SheetActionButton(
                           icon: Icons.message_outlined,
                           label: "Message",
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Message (placeholder)"),
-                              ),
-                            );
-                          },
+                          onTap: () => _messagePatient(plan),
                         ),
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 16),
-
-                  // ✅ Doctor review actions
                   if (plan.status == "Pending") ...[
                     const Text(
                       "Doctor Review",
@@ -357,43 +683,11 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-
                     Row(
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              // ✅ اقفلي الشيت
-                              Navigator.pop(context);
-
-                              // ✅ فعّلي الخطة
-                              setState(() => plan.status = "Active");
-
-                              // ✅ افتح درج الدواء
-                              debugPrint("APPROVE -> OPEN medicine drawer");
-                              // TODO: robotService.openDrawer();
-
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      "Approved ✅ • Opening medicine drawer..."),
-                                ),
-                              );
-
-                              // ✅ اقفل بعد 30 ثانية
-                              Timer(const Duration(seconds: 30), () {
-                                debugPrint(
-                                    "AUTO CLOSE medicine drawer after 30s");
-                                // TODO: robotService.closeDrawer();
-
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(this.context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text("Drawer closed ✅"),
-                                  ),
-                                );
-                              });
-                            },
+                            onPressed: () => _approvePlan(plan),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -416,12 +710,7 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text("Modify (placeholder)")),
-                              );
-                            },
+                            onPressed: () => _editPlan(plan),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               side: const BorderSide(color: AppColors.primary),
@@ -447,13 +736,7 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          setState(() => plan.status = "Completed");
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            const SnackBar(content: Text("Declined (UI only)")),
-                          );
-                        },
+                        onPressed: () => _declinePlan(plan),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           side: const BorderSide(color: Color(0xFFE53935)),
@@ -475,7 +758,6 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
                     ),
                     const SizedBox(height: 14),
                   ],
-
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -530,14 +812,19 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
+        actions: [
+          if (_drawerOpen)
+            const Padding(
+              padding: EdgeInsets.only(right: 14),
+              child: Center(
+                child: Icon(Icons.inventory_2_outlined, color: Colors.green),
+              ),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Add Plan (placeholder)")),
-          );
-        },
+        onPressed: _addPlanSheet,
         child: const Icon(Icons.add, color: Colors.white),
       ),
       body: Column(
@@ -594,7 +881,40 @@ class _TreatmentPlansScreenState extends State<TreatmentPlansScreen> {
   }
 }
 
-// =================== UI Widgets ===================
+class _EditField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final int maxLines;
+
+  const _EditField({
+    required this.controller,
+    required this.hint,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.inputBackground,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: hint,
+          hintStyle: const TextStyle(
+            color: AppColors.textLight,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FilterChip extends StatelessWidget {
   final String label;
@@ -830,17 +1150,16 @@ class _SheetActionButton extends StatelessWidget {
   }
 }
 
-// =================== Model ===================
-
 class _PlanModel {
   final String patientName;
   final String patientImage;
   final String specialty;
-  final String title;
-  final String details;
+
+  String title;
+  String details;
   String status;
-  final String nextAction;
-  final String lastUpdated;
+  String nextAction;
+  String lastUpdated;
 
   final String source;
   final bool hasSkinImage;

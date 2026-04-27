@@ -41,11 +41,14 @@ dependencies:
   cupertino_icons: ^1.0.2
   country_picker: ^2.0.26
   image_picker: ^1.1.2
-  path_provider: ^2.1.4
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   file_selector: ^1.0.3
   open_filex: ^4.4.0
+  share_plus: ^10.1.4
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  path_provider: ^2.1.5
 
   # Local Auth for fingerprint / Face ID
   local_auth: ^3.0.0

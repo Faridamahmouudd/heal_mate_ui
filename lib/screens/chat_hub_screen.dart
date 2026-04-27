@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import 'chat_list_screen.dart';
+import 'chat_screen.dart';
+
+enum ChatHubRole { doctor, patient, nurse }
 
 class ChatHubScreen extends StatelessWidget {
-  const ChatHubScreen({super.key});
+  final ChatHubRole role;
+
+  const ChatHubScreen({
+    super.key,
+    this.role = ChatHubRole.doctor,
+  });
 
   void _safeBack(BuildContext context) {
     if (Navigator.canPop(context)) {
@@ -13,11 +21,55 @@ class ChatHubScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDoctor = role == ChatHubRole.doctor;
+    final isPatient = role == ChatHubRole.patient;
+
+    final firstTitle = isDoctor
+        ? "Patients"
+        : isPatient
+        ? "My Doctor"
+        : "My Patients";
+
+    final firstSubtitle = isDoctor
+        ? "Open patient conversations, follow cases, and reply quickly to ongoing health updates."
+        : isPatient
+        ? "Chat with the doctor responsible for your case."
+        : "Chat with your assigned patients and follow their updates.";
+
+    final firstTag = isDoctor
+        ? "Patient Conversations"
+        : isPatient
+        ? "Assigned Doctor"
+        : "Assigned Patients";
+
+    final firstIcon =
+    isDoctor || role == ChatHubRole.nurse ? Icons.people_alt_outlined : Icons.medical_services_outlined;
+
+    final secondTitle = isDoctor
+        ? "Nurses"
+        : isPatient
+        ? "My Nurse"
+        : "My Doctor";
+
+    final secondSubtitle = isDoctor
+        ? "Coordinate with nursing staff, receive care updates, and organize patient support efficiently."
+        : isPatient
+        ? "Chat with the nurse assigned to your daily care."
+        : "Chat with the doctor you are working with.";
+
+    final secondTag = isDoctor
+        ? "Nursing Staff"
+        : isPatient
+        ? "Assigned Nurse"
+        : "Assigned Doctor";
+
+    final secondIcon =
+    isDoctor || isPatient ? Icons.medical_services_outlined : Icons.local_hospital_outlined;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F9FF),
       body: Stack(
         children: [
-          // Background glow shapes
           Positioned(
             top: -80,
             left: -40,
@@ -54,7 +106,6 @@ class ChatHubScreen extends StatelessWidget {
               ),
             ),
           ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
@@ -64,9 +115,7 @@ class ChatHubScreen extends StatelessWidget {
                   _LuxuryTopBar(
                     onBack: () => _safeBack(context),
                   ),
-
                   const SizedBox(height: 24),
-
                   const Text(
                     "Communication\nHub",
                     style: TextStyle(
@@ -86,9 +135,7 @@ class ChatHubScreen extends StatelessWidget {
                       height: 1.45,
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
@@ -106,8 +153,8 @@ class ChatHubScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Row(
-                      children: const [
+                    child: const Row(
+                      children: [
                         Expanded(
                           child: _PremiumMiniMetric(
                             icon: Icons.chat_bubble_outline_rounded,
@@ -120,62 +167,110 @@ class ChatHubScreen extends StatelessWidget {
                           child: _PremiumMiniMetric(
                             icon: Icons.local_hospital_outlined,
                             title: "Workflow",
-                            value: "Doctor Side",
+                            value: "Care Team",
                           ),
                         ),
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 22),
-
                   Expanded(
                     child: Column(
                       children: [
                         Expanded(
                           child: _LuxuryChatCard(
-                            title: "Patients",
-                            subtitle:
-                            "Open patient conversations, follow cases, and reply quickly to ongoing health updates.",
-                            tag: "Patient Conversations",
-                            icon: Icons.people_alt_outlined,
+                            title: firstTitle,
+                            subtitle: firstSubtitle,
+                            tag: firstTag,
+                            icon: firstIcon,
                             colors: const [
                               Color(0xFF1677E8),
                               Color(0xFF49B3FF),
                             ],
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ChatListScreen(
-                                    type: ChatListType.patients,
+                              if (isDoctor) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatListScreen(
+                                      type: ChatListType.patients,
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              } else if (isPatient) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatScreen(
+                                      chatId: "patient_doctor",
+                                      chatName: "Dr. Sara Mohamed",
+                                      avatarPath: "assets/images/doctor_avatar.jpeg",
+                                      subtitle: "Assigned Doctor",
+                                      otherUserId: 1,
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatListScreen(
+                                      type: ChatListType.patients,
+                                    ),
+                                  ),
+                                );
+                              }
                             },
                           ),
                         ),
                         const SizedBox(height: 18),
                         Expanded(
                           child: _LuxuryChatCard(
-                            title: "Nurses",
-                            subtitle:
-                            "Coordinate with nursing staff, receive care updates, and organize patient support efficiently.",
-                            tag: "Nursing Staff",
-                            icon: Icons.medical_services_outlined,
+                            title: secondTitle,
+                            subtitle: secondSubtitle,
+                            tag: secondTag,
+                            icon: secondIcon,
                             colors: const [
                               Color(0xFF08A88A),
                               Color(0xFF7BDEAD),
                             ],
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ChatListScreen(
-                                    type: ChatListType.nurses,
+                              if (isDoctor) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatListScreen(
+                                      type: ChatListType.nurses,
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              } else if (isPatient) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatScreen(
+                                      chatId: "patient_nurse",
+                                      chatName: "Nurse Sara Ahmed",
+                                      avatarPath: "assets/images/nurse.png",
+                                      subtitle: "Assigned Nurse",
+                                      otherUserId: 101,
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ChatScreen(
+                                      chatId: "nurse_doctor",
+                                      chatName: "Dr. Sara Mohamed",
+                                      avatarPath: "assets/images/doctor_avatar.jpeg",
+                                      subtitle: "Assigned Doctor",
+                                      otherUserId: 1,
+                                    ),
+                                  ),
+                                );
+                              }
                             },
                           ),
                         ),

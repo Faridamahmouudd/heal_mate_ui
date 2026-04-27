@@ -3,7 +3,7 @@ import '../constants/colors.dart';
 import '../models/patient_model.dart';
 import '../services/api/doctor_api_service.dart';
 import 'chat_hub_screen.dart';
-
+import '../widgets/app_error_widget.dart';
 // الشاشات التانية
 import 'patients_list_screen.dart';
 import 'chat_screen.dart';
@@ -304,11 +304,11 @@ class _HomeTabState extends State<_HomeTab> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_error != null)
-              _ErrorCard(
+              AppErrorWidget(
+                title: "Failed to load patients",
                 message: _error!,
                 onRetry: _loadPatients,
-              )
-            else if (_patients.isEmpty)
+              )            else if (_patients.isEmpty)
                 const _EmptyStateCard(
                   message: "No patients assigned yet.",
                 )

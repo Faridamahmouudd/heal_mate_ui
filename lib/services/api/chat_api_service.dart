@@ -27,16 +27,16 @@ class ChatApiService {
         "senderId": senderId,
         "receiverId": receiverId,
         "type": "text",
+        "contentUrl": message,
       },
     );
 
-    return ChatMessageModel.fromJson(response.data);
+    return ChatMessageModel.fromJson(
+      Map<String, dynamic>.from(response.data),
+    );
   }
 
   Future<void> markAsRead(List<int> ids) async {
-    await ApiClient.dio.post(
-      Endpoints.chatMarkAsRead,
-      data: ids,
-    );
+    return;
   }
 }

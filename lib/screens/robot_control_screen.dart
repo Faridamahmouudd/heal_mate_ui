@@ -85,7 +85,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
   Future<void> _openDrawer() async {
     await _sendRobotCommand(
-      "OPEN_DRAWER",
+      "open_drawer",
       successMessage: "Medicine drawer opened",
     );
 
@@ -95,7 +95,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
   Future<void> _closeDrawer() async {
     await _sendRobotCommand(
-      "CLOSE_DRAWER",
+      "close_drawer",
       successMessage: "Medicine drawer closed",
     );
 
@@ -156,7 +156,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
 
   Future<void> _startAutoCheckup() async {
     await _sendRobotCommand(
-      "AUTO_CHECKUP",
+      "checkup",
       successMessage: "Auto checkup started",
     );
 
@@ -419,8 +419,8 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                         icon: Icons.keyboard_arrow_up_rounded,
                         label: "Forward",
                         onTap: () => _sendRobotCommand(
-                          "MOVE_FORWARD",
-                          parameters: '{"speed":2}',
+                          "forward",
+                          parameters: "speed=2",
                           successMessage: "Moving forward",
                         ),
                       ),
@@ -432,7 +432,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.keyboard_arrow_left_rounded,
                             label: "Left",
                             onTap: () => _sendRobotCommand(
-                              "MOVE_LEFT",
+                              "left",
                               parameters: '{"speed":2}',
                               successMessage: "Moving left",
                             ),
@@ -442,7 +442,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.stop_rounded,
                             label: "Stop",
                             onTap: () => _sendRobotCommand(
-                              "STOP",
+                              "stop",
                               successMessage: "Robot stopped",
                             ),
                           ),
@@ -451,7 +451,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.keyboard_arrow_right_rounded,
                             label: "Right",
                             onTap: () => _sendRobotCommand(
-                              "MOVE_RIGHT",
+                              "right",
                               parameters: '{"speed":2}',
                               successMessage: "Moving right",
                             ),
@@ -476,7 +476,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.keyboard_arrow_down_rounded,
                             label: "Backward",
                             onTap: () => _sendRobotCommand(
-                              "MOVE_BACKWARD",
+                              "backward",
                               parameters: '{"speed":2}',
                               successMessage: "Moving backward",
                             ),

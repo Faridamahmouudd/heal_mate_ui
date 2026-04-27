@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
+import 'dart:io';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:printing/printing.dart';
+import 'chat_screen.dart';
 
 class PoxTreatmentPlansScreen extends StatefulWidget {
   const PoxTreatmentPlansScreen({super.key});

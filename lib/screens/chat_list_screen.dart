@@ -3,6 +3,7 @@ import '../constants/colors.dart';
 import '../models/patient_model.dart';
 import '../services/api/doctor_api_service.dart';
 import 'chat_screen.dart';
+import '../services/api/nurse_api_service.dart';
 
 enum ChatListType { patients, nurses }
 
@@ -17,6 +18,7 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   final DoctorApiService _doctorApiService = DoctorApiService();
+  final NurseApiService _nurseApiService = NurseApiService();
   final TextEditingController _searchController = TextEditingController();
 
   bool _isLoading = true;
@@ -69,14 +71,30 @@ class _ChatListScreenState extends State<ChatListScreen> {
           _items = _mockPatients();
         }
       } else {
-        _items = _mockNurses();
+        final nurses = await _nurseApiService
+            .getNurses()
+            .timeout(const Duration(seconds: 6));
+
+        _items = nurses.map((n) {
+          return _ChatItem(
+            id: n.nurseId,
+            name: n.fullName,
+            subtitle: "Nurse Staff",
+            avatar: "assets/images/nurse.png",
+            category: "Nurse",
+            color: const Color(0xFF08A88A),
+          );
+        }).toList();
+
+        if (_items.isEmpty) {
+          _items = _mockNurses();
+        }
       }
     } catch (e) {
       // fallback local بدل ما الشاشة تفضل معلقة
       _items = isPatients ? _mockPatients() : _mockNurses();
-      _error = isPatients ? "Backend unavailable. Showing demo chats." : null;
+      _error = "Backend unavailable. Showing demo chats.";
     }
-
     _filteredItems = List<_ChatItem>.from(_items);
 
     if (!mounted) return;

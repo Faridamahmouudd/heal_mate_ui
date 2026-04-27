@@ -6,6 +6,7 @@ import '../models/patient_model.dart';
 import '../services/api/doctor_api_service.dart';
 import 'patient_profile_screen.dart';
 import 'chat_screen.dart';
+import '../widgets/app_error_widget.dart';
 
 class PatientsListScreen extends StatefulWidget {
   const PatientsListScreen({super.key});
@@ -158,19 +159,17 @@ class _PatientsListScreenState extends State<PatientsListScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
 
+    if (_isLoading) {
+      return const _LoadingSkeleton();
+    }
     if (_error != null) {
-      return _ErrorState(
+      return AppErrorWidget(
+        title: "Failed to load patients",
         message: _error!,
         onRetry: _loadPatients,
       );
     }
-
     if (_filteredPatients.isEmpty) {
       return const _EmptyState(
         message: "No patients found.",
@@ -520,6 +519,72 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+}
+class _LoadingSkeleton extends StatelessWidget {
+  const _LoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      itemCount: 6,
+      itemBuilder: (_, __) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: AppColors.inputBackground,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 12,
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBackground,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 10,
+                      width: 180,
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBackground,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

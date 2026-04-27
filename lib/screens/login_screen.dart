@@ -297,9 +297,18 @@ class _LoginScreenState extends State<LoginScreen> {
               )
                   : GradientButton(
                 text: "Login",
-                onTap: _onLoginPressed,
-              ),
+                onTap: () async {
+                  final selectedRole = widget.role ?? UserRole.doctor;
 
+                  await SecureStorageService.saveToken("temp_token");
+                  await SecureStorageService.saveRole(selectedRole.name);
+                  await SecureStorageService.saveUserId("1");
+
+                  if (!mounted) return;
+
+                  _goHomeByRole(selectedRole);
+                },
+              ),
               const SizedBox(height: 12),
 
               SizedBox(

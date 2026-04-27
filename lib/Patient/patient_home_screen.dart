@@ -8,6 +8,8 @@ import 'patient_alerts_screen.dart';
 import 'patient_chat_screen.dart';
 import '../screens/patient_profile_screen.dart';
 import '../screens/patient_account_screen.dart';
+import '../screens/chat_hub_screen.dart';
+
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -24,8 +26,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     final pages = [
       const _PatientDashboardTab(),
       const _PatientHealthTab(),
-      const PatientChatScreen(),
-      const PatientAccountScreen(), // ✅ بدل PatientProfileScreen
+      const ChatHubScreen(role: ChatHubRole.patient),      const PatientAccountScreen(), // ✅ بدل PatientProfileScreen
     ];
 
     return Scaffold(
@@ -133,7 +134,11 @@ class _PatientDashboardTab extends StatelessWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PatientChatScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const ChatHubScreen(
+                          role: ChatHubRole.patient,
+                        ),
+                      ),
                     );
                   },
                 ),
