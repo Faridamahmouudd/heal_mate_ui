@@ -14,7 +14,7 @@ class LoginResponseModel {
 
     return LoginResponseModel(
       token: json["token"] ?? "",
-      role: json["role"] ?? user["role"] ?? "doctor",
+      role: json["role"] ?? user["role"] ?? "",
       userId: user["id"] ?? json["userId"] ?? 0,
     );
   }

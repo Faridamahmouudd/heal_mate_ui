@@ -5,8 +5,19 @@ class NurseApiService {
   Future<List<NurseModel>> getNurses() async {
     final response = await ApiClient.dio.get(Endpoints.nurses);
 
-    final List data = response.data;
-    return data.map((e) => NurseModel.fromJson(e)).toList();
+    final body = response.data;
+
+    List data = [];
+
+    if (body is List) {
+      data = body;
+    } else if (body is Map<String, dynamic>) {
+      data = body["data"] ?? [];
+    }
+
+    return data
+        .map((e) => NurseModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 }
 

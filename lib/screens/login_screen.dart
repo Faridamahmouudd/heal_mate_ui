@@ -92,8 +92,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      final userRole = _mapRoleFromString(result.role);
+      final roleFromApi = result.role.isNotEmpty
+          ? result.role
+          : (widget.role ?? UserRole.doctor).name;
 
+      final userRole = _mapRoleFromString(roleFromApi);
       _goHomeByRole(userRole);
     } catch (e) {
       if (!mounted) return;
