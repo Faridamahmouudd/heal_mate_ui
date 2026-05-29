@@ -12,8 +12,39 @@ class ChatApiService {
       },
     );
 
-    final List messages = response.data["messages"] ?? [];
-    return messages.map((e) => ChatMessageModel.fromJson(e)).toList();
+    final dynamic body = response.data;
+
+    List messages = [];
+
+    if (body is Map<String, dynamic>) {
+      messages = body["messages"] ?? body["data"] ?? [];
+    } else if (body is List) {
+      messages = body;
+    }
+
+    return messages
+        .map((e) => ChatMessageModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<List<ChatMessageModel>> getUserChats(int userId) async {
+    final response = await ApiClient.dio.get(
+      "${Endpoints.chatUser}/$userId",
+    );
+
+    final dynamic body = response.data;
+
+    List chats = [];
+
+    if (body is Map<String, dynamic>) {
+      chats = body["data"] ?? body["messages"] ?? [];
+    } else if (body is List) {
+      chats = body;
+    }
+
+    return chats
+        .map((e) => ChatMessageModel.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   Future<ChatMessageModel> sendMessage({
@@ -26,17 +57,36 @@ class ChatApiService {
       data: {
         "senderId": senderId,
         "receiverId": receiverId,
-        "type": "text",
+        "type": "Text",
+        "content": message,
         "contentUrl": message,
       },
     );
 
-    return ChatMessageModel.fromJson(
-      Map<String, dynamic>.from(response.data),
+    final dynamic body = response.data;
+
+    if (body is Map<String, dynamic>) {
+      final data = body["data"] ?? body;
+      return ChatMessageModel.fromJson(Map<String, dynamic>.from(data));
+    }
+
+    return ChatMessageModel(
+      messageId: 0,
+      senderId: senderId,
+      receiverId: receiverId,
+      type: "Text",
+      contentPath: message,
+      sentAt: DateTime.now(),
+      isRead: false,
     );
   }
 
   Future<void> markAsRead(List<int> ids) async {
-    return;
+    if (ids.isEmpty) return;
+
+    await ApiClient.dio.post(
+      Endpoints.chatMarkAsRead,
+      data: ids,
+    );
   }
 }

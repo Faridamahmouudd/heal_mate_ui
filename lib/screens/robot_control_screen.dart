@@ -33,18 +33,41 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
   int _doctorId = 0;
   int? _patientId = 2;
 
+  String _robotStatus = "Loading...";
+  int _battery = 0;
+  String _currentAction = "";
+
   @override
   void initState() {
     super.initState();
     _loadDoctorId();
+    _loadRobotStatus();
   }
 
   Future<void> _loadDoctorId() async {
     final saved = await SecureStorageService.getUserId();
     final parsed = int.tryParse(saved ?? '');
+
     setState(() {
-      _doctorId = parsed ?? 0;
+      _doctorId = parsed ?? 1;
     });
+  }
+
+  Future<void> _loadRobotStatus() async {
+    try {
+      final response = await _robotApiService.getStatus();
+      final data = response["data"];
+
+      if (!mounted) return;
+
+      setState(() {
+        _robotStatus = data["status"] ?? "Unknown";
+        _battery = data["battery"] ?? 0;
+        _currentAction = data["currentAction"] ?? "";
+      });
+    } catch (e) {
+      debugPrint("Robot Status Error: $e");
+    }
   }
 
   Future<void> _sendRobotCommand(
@@ -68,6 +91,8 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
         command: command,
         parameters: parameters,
       );
+
+      await _loadRobotStatus();
 
       if (!mounted) return;
       if (successMessage != null) {
@@ -239,8 +264,8 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                     height: 22,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                      : const _StatusChip(
-                    text: "Online",
+                      : _StatusChip(
+                    text: _robotStatus,
                     icon: Icons.wifi_rounded,
                   ),
                 ],
@@ -347,19 +372,19 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
               const SizedBox(height: 10),
 
               Row(
-                children: const [
-                  Expanded(
+                children: [
+                  const Expanded(
                     child: _InfoTile(
                       title: "Robot",
                       value: "RX-01",
                       icon: Icons.smart_toy_outlined,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _InfoTile(
                       title: "Battery",
-                      value: "78%",
+                      value: "$_battery%",
                       icon: Icons.battery_6_bar_rounded,
                     ),
                   ),
@@ -367,19 +392,19 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
               ),
               const SizedBox(height: 10),
               Row(
-                children: const [
+                children: [
                   Expanded(
                     child: _InfoTile(
                       title: "Connection",
-                      value: "Online",
+                      value: _robotStatus,
                       icon: Icons.wifi_rounded,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _InfoTile(
-                      title: "Location",
-                      value: "Room 203",
+                      title: "Action",
+                      value: _currentAction,
                       icon: Icons.location_on_outlined,
                     ),
                   ),
@@ -466,7 +491,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.rotate_left_rounded,
                             label: "Rotate L",
                             onTap: () => _sendRobotCommand(
-                              "ROTATE_LEFT",
+                              "left",
                               parameters: '{"speed":1}',
                               successMessage: "Rotating left",
                             ),
@@ -486,7 +511,7 @@ class _RobotControlScreenState extends State<RobotControlScreen> {
                             icon: Icons.rotate_right_rounded,
                             label: "Rotate R",
                             onTap: () => _sendRobotCommand(
-                              "ROTATE_RIGHT",
+                              "right",
                               parameters: '{"speed":1}',
                               successMessage: "Rotating right",
                             ),
